@@ -13,14 +13,14 @@ CAPTURE_STANDARDS = {
 # (x1, y1, x2, y2)  – inclusive top-left, bottom-right pixel coords
 BB = {
     # --- PORTRAITS master table block (helps for QA overlay) -------------
-    "PORTRAIT_TABLE" : (  30,  430,   796,  875),   # whole red-outlined table
+    "PORTRAIT_TABLE" : (  40,  460,   796,  900),   # whole red-outlined table
 
     # --- Column-isolated crops (feed each to WinRT OCR) ------------------
-    "COL_QTY"        : (  30,  430,    70,  875),   # Quantity column
-    "COL_CODE"       : (  70,  430,   150,  875),   # 3-digit/decimal product code
-    "COL_DESC"       : ( 150,  430,   550,  875),   # Long description text
+    "COL_QTY"        : (  40,  460,    86,  900),   # Quantity column
+    "COL_CODE"       : (  95,  460,   150,  900),   # 3-digit/decimal product code
+    "COL_DESC"       : ( 157,  460,   625,  900),   # Long description text
     # Shifted right by half the original width to fully capture image codes
-    "COL_IMG"        : ( 625,  430,   775,  875),   # 4-digit image IDs (comma-sep)
+    "COL_IMG"        : ( 633,  460,   781,  900),   # 4-digit image IDs (comma-sep)
     # ---------- (Ignore ArtistSeries, Frames, Retouch blocks for now) ----
 }
 
