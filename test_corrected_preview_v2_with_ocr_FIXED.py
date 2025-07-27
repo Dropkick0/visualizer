@@ -69,6 +69,8 @@ def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str
         # (This would need more sophisticated parsing in real implementation)
         return 'Black'  # Default frame color
     
+    image_idx = 0
+
     for i, code in enumerate(extracted_codes):
         if code not in product_mapping:
             print(f"   ⚠️  Unknown product code: {code}")
@@ -80,28 +82,40 @@ def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str
         # Extract frame color
         frame_color = extract_frame_color(code, product_info['description'])
         
-        # Assign image codes based on product type
+        # Assign image codes dynamically based on extracted OCR codes
+        if not image_codes:
+            image_codes = ['0000']  # Fallback to dummy code if none provided
+
+        def next_code(idx: int) -> str:
+            return image_codes[idx % len(image_codes)]
+
         if product_info['type'] == 'wallets':
-            assigned_images = ['0033'] * 8  # Wallets use 0033
+            assigned_images = [next_code(image_idx)] * 8
+            image_idx += 1
         elif product_info['type'] == '5x7':
-            assigned_images = ['0033']  # 5x7 uses 0033
+            assigned_images = [next_code(image_idx)]
+            image_idx += 1
         elif product_info['type'] == '3.5x5':
-            assigned_images = ['0033'] * 4  # 3.5x5 sheet uses 0033
+            assigned_images = [next_code(image_idx)] * 4
+            image_idx += 1
         elif product_info['type'] == '8x10':
-            assigned_images = ['0033']  # 8x10 uses 0033
+            assigned_images = [next_code(image_idx)]
+            image_idx += 1
         elif product_info['type'] == '10x13':
-            assigned_images = ['0102']  # 10x13 uses 0102
+            assigned_images = [next_code(image_idx)]
+            image_idx += 1
         elif product_info['type'] == '16x20':
-            assigned_images = ['0033']  # 16x20 uses 0033
+            assigned_images = [next_code(image_idx)]
+            image_idx += 1
         elif product_info['type'] == '20x24':
-            assigned_images = ['0102']  # 20x24 uses 0102
+            assigned_images = [next_code(image_idx)]
+            image_idx += 1
         elif product_info['type'] == 'trio':
-            if '10x20' in product_info['description']:
-                assigned_images = ['0033', '0044', '0039']  # 10x20 trio
-            else:
-                assigned_images = ['0039', '0033', '0044']  # 5x10 trio
+            assigned_images = [next_code(image_idx + i) for i in range(3)]
+            image_idx += 3
         else:
-            assigned_images = image_codes[:1] if image_codes else ['0033']
+            assigned_images = [next_code(image_idx)]
+            image_idx += 1
         
         # Create order items - IMPORTANT: Create multiple items for quantities > 1
         if product_info['type'] == 'trio':
@@ -295,6 +309,13 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         from app.config import load_config
         
         config = load_config()
+
+        # If DROPBOX_ROOT not configured, try local '8017_Lab_Order' folder
+        if not getattr(config, 'DROPBOX_ROOT', None):
+            local_dropbox = Path(__file__).parent / '8017_Lab_Order'
+            if local_dropbox.exists():
+                config.DROPBOX_ROOT = str(local_dropbox)
+
         searcher = create_image_searcher(config)
         
         if searcher:
