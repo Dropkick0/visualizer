@@ -92,10 +92,13 @@ def map_product_codes_to_items(
             code, product_info['description'], ocr_description
         )
         
-        codes_for_assignment = image_codes if image_codes else ['0000']
+        # Assign image codes dynamically based on extracted OCR codes
+        if not image_codes:
+            image_codes = ['0000']  # Fallback to dummy code if none provided
 
         def next_code(idx: int) -> str:
-            return codes_for_assignment[idx % len(codes_for_assignment)]
+            return image_codes[idx % len(image_codes)]
+
 
         if product_info['type'] == 'wallets':
             assigned_images = [next_code(image_idx)] * 8
@@ -311,15 +314,21 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"\n📸 Step 4: Image Discovery")
         print("=" * 60)
         
-        # Use local folder for image search
-        from app.image_search import DropboxImageSearcher
 
-        local_dropbox = Path(__file__).parent / '8017_Lab_Order'
-        if local_dropbox.exists():
-            searcher = DropboxImageSearcher(str(local_dropbox))
-        else:
-            print("   ⚠️ Local '8017_Lab_Order' folder not found - image search disabled")
-            searcher = None
+        # Use proper image search functionality
+        from app.image_search import create_image_searcher
+        from app.config import load_config
+        
+        config = load_config()
+
+        # If DROPBOX_ROOT not configured, try local '8017_Lab_Order' folder
+        if not getattr(config, 'DROPBOX_ROOT', None):
+            local_dropbox = Path(__file__).parent / '8017_Lab_Order'
+            if local_dropbox.exists():
+                config.DROPBOX_ROOT = str(local_dropbox)
+
+        searcher = create_image_searcher(config)
+
         
         if searcher:
             print(f"   • Searching in: {searcher.dropbox_root}")
