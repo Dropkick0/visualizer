@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block title %}Error - Portrait Preview{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <!-- Main Error Display -->
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    {{ error.__class__.__name__.replace('Error', ' Error') }}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-times-circle me-2"></i>What happened?
+                    </h6>
+                    <p class="mb-0">{{ error.message or error }}</p>
+                </div>
+
+                <!-- Error Details -->
+                {% if details and details|length > 0 %}
+                <div class="alert alert-info">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-info-circle me-2"></i>Technical Details
+                    </h6>
+                    <dl class="row mb-0 small">
+                        {% for key, value in details.items() %}
+                        <dt class="col-sm-4">{{ key|replace('_', ' ')|title }}:</dt>
+                        <dd class="col-sm-8">
+                            {% if value is string %}
+                                {{ value }}
+                            {% elif value is number %}
+                                {{ value }}
+                            {% elif value is sequence %}
+                                {{ value|join(', ') }}
+                            {% else %}
+                                {{ value }}
+                            {% endif %}
+                        </dd>
+                        {% endfor %}
+                    </dl>
+                </div>
+                {% endif %}
+
+                <!-- Recovery Suggestions -->
+                {% if suggestions and suggestions|length > 0 %}
+                <div class="alert alert-success">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-lightbulb me-2"></i>How to fix this
+                    </h6>
+                    <ol class="mb-0">
+                        {% for suggestion in suggestions %}
+                        <li>{{ suggestion }}</li>
+                        {% endfor %}
+                    </ol>
+                </div>
+                {% endif %}
+
+                <!-- Specific Error Type Guidance -->
+                {% if error.__class__.__name__ == 'NoItemsDetectedError' %}
+                <div class="alert alert-warning">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-search me-2"></i>Screenshot Guidelines
+                    </h6>
+                    <p class="mb-2">For best OCR results, your screenshot should:</p>
+                    <ul class="mb-0">
+                        <li>Show the <strong>PORTRAITS</strong> table clearly</li>
+                        <li>Include product names, quantities, and 4-digit codes</li>
+                        <li>Have good contrast (dark text on light background)</li>
+                        <li>Be focused and not blurry</li>
+                        <li>Be cropped to just the order table area</li>
+                    </ul>
+                </div>
+                {% elif error.__class__.__name__ == 'ImageFilesNotFoundError' %}
+                <div class="alert alert-warning">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-folder-open me-2"></i>File Organization Tips
+                    </h6>
+                    <p class="mb-2">Make sure your customer images:</p>
+                    <ul class="mb-0">
+                        <li>Are in the correct Dropbox folder</li>
+                        <li>Have 4-digit codes at the end of filenames (e.g., IMG_1234.jpg)</li>
+                        <li>Are not in subfolders unless specified</li>
+                        <li>Have readable file permissions</li>
+                    </ul>
+                </div>
+                {% elif error.__class__.__name__ == 'TesseractNotInstalledError' %}
+                <div class="alert alert-warning">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-download me-2"></i>Installation Required
+                    </h6>
+                    <p class="mb-2">Tesseract OCR is required for reading screenshots. Choose your platform:</p>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <strong>Windows:</strong><br>
+                            <a href="https://github.com/UB-Mannheim/tesseract/wiki" target="_blank" class="btn btn-sm btn-outline-primary">
+                                Download Installer
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <strong>macOS:</strong><br>
+                            <code>brew install tesseract</code>
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Ubuntu:</strong><br>
+                            <code>sudo apt install tesseract-ocr</code>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="d-grid gap-2 d-md-flex justify-content-md-center mt-4">
+            <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+                <i class="fas fa-upload me-2"></i>Try Again
+            </a>
+            <button class="btn btn-outline-secondary" onclick="history.back()">
+                <i class="fas fa-arrow-left me-2"></i>Go Back
+            </button>
+            {% if config.DEBUG and session_id %}
+            <a href="{{ url_for('main.debug_session', session_id=session_id) }}" 
+               class="btn btn-outline-info" target="_blank">
+                <i class="fas fa-bug me-2"></i>Debug Info
+            </a>
+            {% endif %}
+        </div>
+
+        <!-- Common Issues Accordion -->
+        <div class="mt-4">
+            <div class="accordion" id="commonIssuesAccordion">
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#commonIssues">
+                            <i class="fas fa-question-circle me-2"></i>Common Issues & Solutions
+                        </button>
+                    </h2>
+                    <div id="commonIssues" class="accordion-collapse collapse" 
+                         data-bs-parent="#commonIssuesAccordion">
+                        <div class="accordion-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6><i class="fas fa-camera text-primary me-2"></i>Screenshot Problems</h6>
+                                    <ul class="small">
+                                        <li>Image too blurry or low resolution</li>
+                                        <li>Screenshot doesn't include the full table</li>
+                                        <li>Poor contrast or lighting</li>
+                                        <li>Text is too small to read clearly</li>
+                                    </ul>
+
+                                    <h6 class="mt-3"><i class="fas fa-folder text-warning me-2"></i>Folder Issues</h6>
+                                    <ul class="small">
+                                        <li>Wrong folder path or typos</li>
+                                        <li>Folder doesn't exist or moved</li>
+                                        <li>No read permissions</li>
+                                        <li>Images in unexpected subfolders</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6><i class="fas fa-file-image text-success me-2"></i>File Problems</h6>
+                                    <ul class="small">
+                                        <li>4-digit codes don't match filenames</li>
+                                        <li>Files are corrupted or unreadable</li>
+                                        <li>Wrong file format (not JPG/PNG)</li>
+                                        <li>Files too large or too small</li>
+                                    </ul>
+
+                                    <h6 class="mt-3"><i class="fas fa-cogs text-info me-2"></i>System Issues</h6>
+                                    <ul class="small">
+                                        <li>Missing software dependencies</li>
+                                        <li>Insufficient disk space</li>
+                                        <li>Network connectivity problems</li>
+                                        <li>Permissions or security restrictions</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Support Contact -->
+        <div class="card mt-4 border-light">
+            <div class="card-body text-center">
+                <h6 class="card-title">
+                    <i class="fas fa-life-ring me-2"></i>Still Need Help?
+                </h6>
+                <p class="card-text small text-muted">
+                    If you continue to experience issues, please contact IT support with the 
+                    {% if session_id %}session ID: <code>{{ session_id }}</code>{% else %}error details above{% endif %}.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-copy session ID to clipboard when clicked
+document.addEventListener('DOMContentLoaded', function() {
+    const sessionCodes = document.querySelectorAll('code');
+    sessionCodes.forEach(code => {
+        if (code.textContent.includes('-')) { // Likely a session ID
+            code.style.cursor = 'pointer';
+            code.title = 'Click to copy';
+            code.addEventListener('click', function() {
+                navigator.clipboard.writeText(this.textContent).then(() => {
+                    // Show temporary tooltip
+                    const originalTitle = this.title;
+                    this.title = 'Copied!';
+                    setTimeout(() => {
+                        this.title = originalTitle;
+                    }, 1000);
+                });
+            });
+        }
+    });
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Error - Portrait Preview{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Error</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">{{ error_message }}</p>
+                
+                {% if session_id %}
+                <p class="text-muted small">Session ID: <code>{{ session_id }}</code></p>
+                {% endif %}
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                    <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+                        <i class="fas fa-home me-2"></i>Start Over
+                    </a>
+                    <button class="btn btn-outline-secondary" onclick="history.back()">
+                        <i class="fas fa-arrow-left me-2"></i>Go Back
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

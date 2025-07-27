@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Preview Generated - Portrait Preview{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Main Preview -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-image me-2"></i>Customer Portrait Preview</h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+                        <i class="fas fa-print me-1"></i>Print
+                    </button>
+                    {% if config.DEBUG %}
+                    <a href="{{ url_for('main.debug_session', session_id=session_id) }}" 
+                       class="btn btn-sm btn-outline-info" target="_blank">
+                        <i class="fas fa-bug me-1"></i>Debug
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                {% if result.preview_images and result.preview_images|length > 0 %}
+                    <!-- Multiple Preview Images -->
+                    {% if result.preview_images|length > 1 %}
+                        <div class="row">
+                            {% for preview in result.preview_images %}
+                            <div class="col-md-6 mb-3">
+                                <div class="text-center">
+                                    <img src="{{ preview.preview_url }}" 
+                                         class="img-fluid border rounded shadow-sm" 
+                                         alt="Preview {{ loop.index }} - {{ preview.product_slug }}"
+                                         style="max-height: 400px; cursor: pointer;"
+                                         onclick="showFullPreview('{{ preview.preview_url }}', '{{ preview.product_slug }}')">
+                                    <div class="mt-2">
+                                        <small class="text-muted">
+                                            {{ preview.product_slug|replace('_', ' ')|title }}
+                                            <br>Codes: {{ preview.codes_used|join(', ') }}
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <!-- Single Preview Image -->
+                        <div class="text-center">
+                            <img src="{{ result.preview_images[0].preview_url }}" 
+                                 class="img-fluid border rounded shadow-sm" 
+                                 alt="Portrait Preview"
+                                 style="max-width: 100%; max-height: 80vh; cursor: pointer;"
+                                 onclick="showFullPreview('{{ result.preview_images[0].preview_url }}', '{{ result.preview_images[0].product_slug }}')">
+                        </div>
+                    {% endif %}
+                {% elif result.preview_url %}
+                    <!-- Legacy single preview -->
+                    <div class="text-center">
+                        <img src="{{ result.preview_url }}" 
+                             class="img-fluid border rounded shadow-sm" 
+                             alt="Portrait Preview"
+                             style="max-width: 100%; max-height: 80vh;">
+                    </div>
+                {% else %}
+                    <div class="alert alert-warning text-center">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Preview images could not be generated
+                        {% if result.render_stats and result.render_stats.failed_renders > 0 %}
+                            <br><small class="text-muted">
+                                {{ result.render_stats.failed_renders }} of {{ result.render_stats.total_items }} items failed to render
+                            </small>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Human QC Banner -->
+        <div class="alert alert-info mt-3">
+            <i class="fas fa-eye me-2"></i>
+            <strong>Quality Check Required:</strong> 
+            Verify faces, frame styles, and quantities match the Field Order before showing to customer.
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="d-grid gap-2 d-md-flex justify-content-md-center mt-3">
+            <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+                <i class="fas fa-upload me-2"></i>Generate Another Preview
+            </a>
+            <button class="btn btn-outline-secondary" onclick="history.back()">
+                <i class="fas fa-arrow-left me-2"></i>Back & Change Settings
+            </button>
+        </div>
+    </div>
+
+    <!-- Sidebar Info -->
+    <div class="col-lg-4">
+        <!-- Processing Summary -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Processing Summary</h6>
+            </div>
+            <div class="card-body">
+                <dl class="row small">
+                    <dt class="col-sm-5">Background:</dt>
+                    <dd class="col-sm-7">{{ result.background or 'Default' }}</dd>
+                    
+                    <dt class="col-sm-5">Folder:</dt>
+                    <dd class="col-sm-7 text-break">{{ result.folder_path }}</dd>
+                    
+                    {% if result.render_stats %}
+                    <dt class="col-sm-5">Previews:</dt>
+                    <dd class="col-sm-7">
+                        <span class="badge bg-success">{{ result.render_stats.successful_renders }}</span>
+                        {% if result.render_stats.failed_renders > 0 %}
+                            <span class="badge bg-danger ms-1">{{ result.render_stats.failed_renders }} failed</span>
+                        {% endif %}
+                    </dd>
+                    {% endif %}
+                    
+                    <dt class="col-sm-5">Session ID:</dt>
+                    <dd class="col-sm-7"><code>{{ session_id }}</code></dd>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Parsed Items -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-list me-2"></i>Detected Items ({{ result.parsed_items|length }})</h6>
+            </div>
+            <div class="card-body">
+                {% if result.parsed_items %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Qty</th>
+                                    <th>Codes</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in result.parsed_items %}
+                                <tr>
+                                    <td>
+                                        <small>{{ item.product_slug|replace('_', ' ')|title }}</small>
+                                        {% if item.frame_style and item.frame_style != 'none' %}
+                                            <br><small class="text-muted">{{ item.frame_style|title }} Frame</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ item.quantity }}</span>
+                                    </td>
+                                    <td>
+                                        <small>
+                                            {% for code in item.codes %}
+                                                <code>{{ code }}</code>{% if not loop.last %}, {% endif %}
+                                            {% endfor %}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        {% if item.warnings %}
+                                            <i class="fas fa-exclamation-triangle text-warning" 
+                                               title="{{ item.warnings|join(', ') }}"></i>
+                                        {% else %}
+                                            <i class="fas fa-check text-success"></i>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <p class="mb-0">No items were detected in the screenshot.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Warnings -->
+        {% if result.warnings %}
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h6 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Warnings</h6>
+            </div>
+            <div class="card-body">
+                <ul class="mb-0 small">
+                    {% for warning in result.warnings %}
+                        <li>{{ warning }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Status Legend -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-legend me-2"></i>Status Legend</h6>
+            </div>
+            <div class="card-body">
+                <div class="small">
+                    <div class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        All images found and matched
+                    </div>
+                    <div class="mb-2">
+                        <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                        Missing images or parsing issues
+                    </div>
+                    <div class="mb-0">
+                        <span class="badge bg-secondary me-2">2</span>
+                        Quantity badge (pairs, sheets, etc.)
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Missing Images Modal (if applicable) -->
+{% set missing_codes = [] %}
+{% for item in result.parsed_items %}
+    {% if item.warnings and 'missing' in item.warnings|join('').lower() %}
+        {% set _ = missing_codes.extend(item.codes) %}
+    {% endif %}
+{% endfor %}
+
+{% if missing_codes %}
+<div class="modal fade" id="missingImagesModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Missing Images
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>The following image codes could not be found in the specified folder:</p>
+                <div class="alert alert-warning">
+                    {% for code in missing_codes %}
+                        <code>{{ code }}</code>{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                </div>
+                <p class="mb-0">
+                    <strong>Solutions:</strong>
+                </p>
+                <ul class="small">
+                    <li>Double-check the folder path for typos</li>
+                    <li>Ensure the image files exist in the specified folder</li>
+                    <li>Check if files are in a subfolder</li>
+                    <li>Verify the 4-digit codes match the filename suffixes</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">OK</button>
+                <a href="{{ url_for('main.index') }}" class="btn btn-primary">Try Again</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+<!-- Full Preview Modal -->
+<div class="modal fade" id="fullPreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-expand me-2"></i><span id="modalTitle">Full Preview</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" class="img-fluid" alt="Full Preview">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="downloadCurrentPreview()">
+                    <i class="fas fa-download me-1"></i>Download
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+// Show full preview modal
+function showFullPreview(imageUrl, productSlug) {
+    const modal = new bootstrap.Modal(document.getElementById('fullPreviewModal'));
+    document.getElementById('modalImage').src = imageUrl;
+    document.getElementById('modalTitle').textContent = productSlug ? `Preview - ${productSlug.replace('_', ' ')}` : 'Full Preview';
+    modal.show();
+}
+
+// Download current preview
+function downloadCurrentPreview() {
+    const imageUrl = document.getElementById('modalImage').src;
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = 'portrait_preview.jpg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Auto-show missing images modal if there are missing images
+{% if missing_codes %}
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = new bootstrap.Modal(document.getElementById('missingImagesModal'));
+    modal.show();
+});
+{% endif %}
+
+// Print styling
+window.addEventListener('beforeprint', function() {
+    document.title = 'Portrait Preview - Session {{ session_id }}';
+});
+
+// Tooltip initialization for warnings
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+    var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+{% endblock %} 
