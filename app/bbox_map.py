@@ -19,7 +19,8 @@ BB = {
     "COL_QTY"        : (  30,  430,    70,  875),   # Quantity column
     "COL_CODE"       : (  70,  430,   150,  875),   # 3-digit/decimal product code
     "COL_DESC"       : ( 150,  430,   550,  875),   # Long description text
-    "COL_IMG"        : ( 550,  430,   700,  875),   # 4-digit image IDs (comma-sep)
+    # Shifted right by half the original width to fully capture image codes
+    "COL_IMG"        : ( 625,  430,   775,  875),   # 4-digit image IDs (comma-sep)
     # ---------- (Ignore ArtistSeries, Frames, Retouch blocks for now) ----
 }
 
