@@ -251,7 +251,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"✅ Loaded {len(products_config.get('products', []))} product configurations")
         
         # Step 1: OCR Extraction with our working system
-        print(f"\n🔍 Step 1: OCR Extraction with Production OCRExtractor")
+        print("\n🔍 Step 1: OCR Extraction with Production OCRExtractor")
         print("=" * 60)
         
         screenshot_file = Path(screenshot_path)
@@ -270,7 +270,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
             print("❌ No rows extracted from OCR")
             return False
         
-        print(f"✅ OCR extraction successful:")
+        print("✅ OCR extraction successful:")
         print(f"   • Rows extracted: {len(rows)}")
         
         # Get the extracted data
@@ -280,7 +280,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"   • Images: '{row.imgs}'")
         
         # Step 2: Parse extracted data  
-        print(f"\n📋 Step 2: Parsing Extracted Data")
+        print("\n📋 Step 2: Parsing Extracted Data")
         print("=" * 60)
         
         # Extract product codes from the code column
@@ -289,6 +289,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         
         # Extract image codes from the images column and description
         all_text = f"{row.imgs} {row.desc}"
+        print(f"   • OCR text for codes: '{all_text[:100]}...'")
         image_codes = extract_image_codes_from_text(all_text)
 
         if not image_codes:
@@ -298,6 +299,9 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
                 from PIL import Image
 
                 raw_text = pytesseract.image_to_string(Image.open(screenshot_file), config="--psm 6")
+
+                print(f"   • Fallback OCR text: '{raw_text[:200]}...'")
+
                 image_codes = extract_image_codes_from_text(raw_text)
             except Exception as e:
                 print(f"   ⚠️ Fallback OCR failed: {e}")
@@ -309,7 +313,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"   • Found image codes: {image_codes}")
         
         # Step 3: Map to order items
-        print(f"\n🔄 Step 3: Mapping to Order Items")
+        print("\n🔄 Step 3: Mapping to Order Items")
         print("=" * 60)
         
         order_items = map_product_codes_to_items(product_codes, image_codes, row.desc)
@@ -321,7 +325,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"✅ Created {len(order_items)} order items")
         
         # Step 4: Image Discovery
-        print(f"\n📸 Step 4: Image Discovery")
+        print("\n📸 Step 4: Image Discovery")
         print("=" * 60)
         
 
@@ -334,8 +338,12 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         # If DROPBOX_ROOT not configured, try local '8017_Lab_Order' folder
         if not getattr(config, 'DROPBOX_ROOT', None):
             local_dropbox = Path(__file__).parent / '8017_Lab_Order'
+            print(f"   • Looking for local Dropbox folder: {local_dropbox}")
             if local_dropbox.exists():
                 config.DROPBOX_ROOT = str(local_dropbox)
+                print(f"   • Using local Dropbox folder: {local_dropbox}")
+            else:
+                print("   ⚠️ Local Dropbox folder not found")
 
         searcher = create_image_searcher(config)
 
@@ -359,21 +367,21 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
                 try:
                     relative_path = paths[0].relative_to(searcher.dropbox_root)
                     print(f"     - {code}: {relative_path} (and {len(paths)-1} more)" if len(paths) > 1 else f"     - {code}: {relative_path}")
-                except:
+                except Exception:
                     print(f"     - {code}: {paths[0].name} (and {len(paths)-1} more)" if len(paths) > 1 else f"     - {code}: {paths[0].name}")
         else:
             print("   ⚠️ Image searcher not available - check Dropbox configuration")
             existing_images = {}
         
         # Step 5: Frame Requirements
-        print(f"\n🖼️ Step 5: Determining Frame Requirements")
+        print("\n🖼️ Step 5: Determining Frame Requirements")
         print("=" * 60)
         
         frame_requirements = determine_frame_requirements_from_items(order_items)
         print(f"   • Frame requirements: {frame_requirements}")
         
         # Step 6: Generate Preview
-        print(f"\n🚀 Step 6: Generating Preview")
+        print("\n🚀 Step 6: Generating Preview")
         print("=" * 60)
         
         # Create output directory
@@ -386,7 +394,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         # Generate preview
         output_path = output_dir / "ocr_extracted_preview_with_frames.png"
         
-        print(f"🎨 Generating preview from OCR-extracted data...")
+        print("🎨 Generating preview from OCR-extracted data...")
         print(f"   • Order items: {len(order_items)}")
         print(f"   • Images: {len(existing_images)}")
         print(f"   • Output: {output_path}")
@@ -396,15 +404,15 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         )
         
         if success:
-            print(f"✅ OCR-based preview created successfully!")
+            print("✅ OCR-based preview created successfully!")
             print(f"📁 Saved to: {output_path}")
-            print(f"🎯 Successfully used working OCR to extract and render actual FileMaker order")
-            print(f"📊 Order contained:")
+            print("🎯 Successfully used working OCR to extract and render actual FileMaker order")
+            print("📊 Order contained:")
             for item in order_items:
                 print(f"   • {item['display_name']}")
             return True
         else:
-            print(f"❌ Failed to create preview")
+            print("❌ Failed to create preview")
             return False
             
     except Exception as e:
