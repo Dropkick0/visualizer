@@ -154,29 +154,42 @@ class OCRExtractor:
             logger.warning(f"Layout validation failed: {e}")
             return False
     
-    def _run_column_isolated_ocr(self, base_image: np.ndarray, work_dir: Path) -> Dict[str, List]:
+    def _run_column_isolated_ocr(self, base_image: np.ndarray, work_dir: Path) -> Dict[str, List[tuple]]:
         """Run OCR on each column separately with high-DPI upscaling"""
-        results = {}
-        
+        results: Dict[str, List[tuple]] = {}
+
         for col_name, bbox in self.column_boxes.items():
             try:
                 # Step 1: Crop column
                 x1, y1, x2, y2 = bbox
                 column_crop = base_image[y1:y2, x1:x2]
-                
+
                 # Step 2: High-DPI preprocessing (3x upscaling)
                 processed_crop = self._preprocess_for_ocr(column_crop, col_name, work_dir)
-                
+
                 # Step 3: Run OCR on processed crop
-                ocr_lines = self._run_ocr_on_crop(processed_crop, col_name)
-                
-                results[col_name] = ocr_lines
-                logger.debug(f"Column {col_name}: extracted {len(ocr_lines)} text lines")
-                
+                ocr_blocks = self._run_ocr_on_crop(processed_crop, col_name)
+
+                # Convert OCR blocks to (text, y_mid) tuples
+                lines = []
+                for block in ocr_blocks:
+                    txt = str(block.get('text', '')).strip()
+                    if not txt:
+                        continue
+                    if 'boundingBox' in block:
+                        bbox = block['boundingBox']
+                        y_mid = (bbox[1] + bbox[5]) / 2
+                    else:
+                        y_mid = block.get('y_position', 0)
+                    lines.append((txt, y_mid))
+
+                results[col_name] = lines
+                logger.debug("Column %s: %d lines", col_name, len(lines))
+
             except Exception as e:
                 logger.error(f"OCR failed for column {col_name}: {e}")
                 results[col_name] = []
-        
+
         return results
     
     def _preprocess_for_ocr(self, crop: np.ndarray, col_name: str, work_dir: Path) -> np.ndarray:
@@ -273,57 +286,29 @@ class OCRExtractor:
         
         return lines
     
-    def _reconstruct_rows(self, ocr_results: Dict[str, List]) -> List[RowRecord]:
-        """Reconstruct table rows by matching Y-centroids across columns"""
-        
-        # Collect all text lines with their Y positions
-        all_lines = []
-        for col_name, lines in ocr_results.items():
-            for line in lines:
-                all_lines.append({
-                    'column': col_name,
-                    'text': line['text'],
-                    'y_position': line['y_position'],
-                    'confidence': line['confidence']
-                })
-        
-        # Group lines by Y position (with tolerance for alignment)
-        y_tolerance = 20  # pixels
-        row_groups = defaultdict(lambda: {"lines": [], "y_avg": 0})
-        
-        for line in all_lines:
-            y_pos = line['y_position']
-            
-            # Find existing group within tolerance
-            matched_group = None
-            for group_y in row_groups:
-                if abs(y_pos - group_y) <= y_tolerance:
-                    matched_group = group_y
-                    break
-            
-            if matched_group is not None:
-                row_groups[matched_group]["lines"].append(line)
-            else:
-                row_groups[y_pos]["lines"].append(line)
-        
-        # Convert groups to RowRecord objects
-        rows = []
-        for group_y, group_data in sorted(row_groups.items()):
-            row = RowRecord(y_position=group_y)
-            
-            for line in group_data["lines"]:
-                field_name = COLUMN_FIELDS.get(line['column'])
-                if field_name:
-                    setattr(row, field_name, line['text'])
-            
-            # Calculate average confidence
-            confidences = [line['confidence'] for line in group_data["lines"]]
-            row.confidence = sum(confidences) / len(confidences) if confidences else 0
-            
-            rows.append(row)
-        
-        logger.debug(f"Reconstructed {len(rows)} rows from {len(all_lines)} text lines")
-        return rows
+    def _reconstruct_rows(self, cols: Dict[str, List[tuple]]) -> List[RowRecord]:
+        """Rebuild row records by aligning text using Y centroids."""
+
+        if not cols:
+            return []
+
+        anchor = sorted(cols.get('COL_QTY', []), key=lambda t: t[1])
+        rows = [{'y': y, 'qty': '', 'code': '', 'desc': '', 'imgs': ''} for _, y in anchor]
+
+        def assign(col_name: str, key: str):
+            for text, y in cols.get(col_name, []):
+                target = min(rows, key=lambda r: abs(r['y'] - y))
+                if abs(target['y'] - y) < 12:
+                    target[key] = text
+
+        assign('COL_QTY', 'qty')
+        assign('COL_CODE', 'code')
+        assign('COL_DESC', 'desc')
+        assign('COL_IMG', 'imgs')
+
+        row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'], y_position=r['y']) for r in rows]
+        logger.debug("Reconstructed %d rows", len(row_records))
+        return row_records
     
     def _clean_rows(self, rows: List[RowRecord]) -> List[RowRecord]:
         """Apply domain-aware fuzzy corrections to extracted data"""
@@ -423,7 +408,14 @@ class OCRExtractor:
             # Add row number for tracking
             row.row_number = i + 1
             valid_rows.append(row)
-        
+
+        # Gather unique image codes from rows
+        IMG_RE = re.compile(r'\b\d{3,4}\b')
+        image_codes: List[str] = []
+        for r in valid_rows:
+            image_codes += IMG_RE.findall(r.imgs or '')
+        self.performance_stats['image_codes'] = list(dict.fromkeys(image_codes))
+
         # Create QA log CSV
         self._create_qa_log(valid_rows, work_dir)
         
@@ -434,25 +426,24 @@ class OCRExtractor:
         """Create CSV log for QA review"""
         try:
             import csv
-            
+
             qa_log_path = work_dir / "ocr_extraction_qa.csv"
+            fieldnames = ["Row", "Qty", "Code", "Description", "Image_Codes", "Confidence", "Warnings"]
             with open(qa_log_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                
-                # Header
-                writer.writerow(['Row', 'Qty', 'Code', 'Description', 'Image_Codes', 'Confidence', 'Warnings'])
-                
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+
                 # Data rows
                 for row in rows:
-                    writer.writerow([
-                        getattr(row, 'row_number', ''),
-                        row.qty or '',
-                        row.code or '',
-                        row.desc or '',
-                        row.imgs or '',
-                        f"{row.confidence:.1f}%",
-                        "; ".join(row.warnings) if row.warnings else ''
-                    ])
+                    writer.writerow({
+                        "Row": getattr(row, 'row_number', ''),
+                        "Qty": row.qty or '',
+                        "Code": row.code or '',
+                        "Description": row.desc or '',
+                        "Image_Codes": row.imgs or '',
+                        "Confidence": f"{row.confidence:.1f}%",
+                        "Warnings": '; '.join(row.warnings) if row.warnings else ''
+                    })
             
             logger.debug(f"QA log created: {qa_log_path}")
             

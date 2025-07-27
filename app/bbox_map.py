@@ -50,9 +50,10 @@ def get_sentinel_coords():
 # Column field mapping for row reconstruction
 COLUMN_FIELDS = {
     "COL_QTY": "qty",
-    "COL_CODE": "code", 
+    "COL_CODE": "code",
     "COL_DESC": "desc",
-    "COL_IMG": "image_codes"
+    # Map image column to RowRecord field name
+    "COL_IMG": "imgs",
 }
 
 # Layout validation colors (for drift detection)
