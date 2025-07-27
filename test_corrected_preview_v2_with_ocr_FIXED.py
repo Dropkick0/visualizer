@@ -290,7 +290,17 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         # Extract image codes from the images column and description
         all_text = f"{row.imgs} {row.desc}"
         image_codes = extract_image_codes_from_text(all_text)
-        
+
+        if not image_codes:
+            # Fallback: run a general OCR pass on the entire screenshot
+            try:
+                import pytesseract
+                from PIL import Image
+
+                raw_text = pytesseract.image_to_string(Image.open(screenshot_file), config="--psm 6")
+                image_codes = extract_image_codes_from_text(raw_text)
+            except Exception as e:
+                print(f"   ⚠️ Fallback OCR failed: {e}")
 
         if not image_codes:
             print("   • No image codes detected in OCR")
