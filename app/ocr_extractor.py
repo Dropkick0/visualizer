@@ -22,9 +22,54 @@ except ImportError:
     logger.warning("winocr not available - will use fallback OCR")
 
 from .bbox_map import (
-    get_column_boxes, get_sentinel_coords, COLUMN_FIELDS, 
-    LAYOUT_COLORS, UI_VERSION, validate_ui_version, BB
+    get_column_boxes,
+    get_sentinel_coords,
+    COLUMN_FIELDS,
+    LAYOUT_COLORS,
+    UI_VERSION,
+    validate_ui_version,
+    BB,
 )
+
+# --- Additional OCR regions for frames/retouch --------------------------------
+# Coordinates tuned for the reference 1680x1050 screenshot resolution.
+FRAMES_TABLE = (1120, 500, 1580, 760)
+RETOUCH_BOX = (970, 300, 1270, 450)
+
+# Regular expression patterns for parsing the extra tables
+FRAME_ROW_RE = re.compile(
+    r"(?P<qty>\d+)\s+(?P<num>\d+)\s+(?P<size>\d+\s*x\s*\d+)\s+(?P<color>black|cherry)",
+    re.IGNORECASE,
+)
+RETOUCH_RE = re.compile(r"(?P<qty>\d+)\s+(?P<name>Artist brush strokes.*)", re.I)
+
+
+def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
+    """Parse frame counts from OCR lines."""
+    frame_counts: Dict[str, Dict[str, int]] = {}
+    for ln in lines:
+        m = FRAME_ROW_RE.search(ln)
+        if not m:
+            continue
+        size = m.group("size").replace(" ", "")
+        color = m.group("color").lower()
+        qty = int(m.group("qty"))
+        frame_counts.setdefault(size, {}).setdefault(color, 0)
+        frame_counts[size][color] += qty
+    return frame_counts
+
+
+def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool]:
+    """Parse retouch entries from OCR lines and detect Artist Series."""
+    retouch = []
+    artist_series = False
+    for ln in lines:
+        if "artist brush strokes" in ln.lower():
+            artist_series = True
+        m = RETOUCH_RE.search(ln)
+        if m and int(m.group("qty")) > 0:
+            retouch.append({"name": m.group("name").strip(), "qty": int(m.group("qty"))})
+    return retouch, artist_series
 
 
 @dataclass
@@ -51,6 +96,9 @@ class OCRExtractor:
         self.column_boxes = get_column_boxes()
         self.ocr_engine = None
         self.performance_stats = {}
+        self.frame_counts: Dict[str, Dict[str, int]] = {}
+        self.retouch_items: List[Dict[str, int]] = []
+        self.artist_series: bool = False
         
         # Load product codes for fuzzy matching
         self._load_product_codes()
@@ -100,6 +148,15 @@ class OCRExtractor:
             
             # Step 3: Run column-isolated OCR
             ocr_results = self._run_column_isolated_ocr(base_image, work_dir)
+
+            # Additional ROIs for frames and retouch sections
+            self.frames_lines = self._ocr_roi(base_image, FRAMES_TABLE, "FRAMES", work_dir)
+            self.retouch_lines = self._ocr_roi(base_image, RETOUCH_BOX, "RETOUCH", work_dir)
+            self.frame_counts = parse_frames(self.frames_lines)
+            self.retouch_items, self.artist_series = parse_retouch(self.retouch_lines)
+            logger.info(f"Frames parsed: {self.frame_counts}")
+            logger.info(f"Retouch parsed: {self.retouch_items}")
+            logger.info(f"Artist series detected: {self.artist_series}")
             
             # Step 4: Reconstruct rows by Y-centroid matching
             rows = self._reconstruct_rows(ocr_results)
@@ -191,6 +248,24 @@ class OCRExtractor:
                 results[col_name] = []
 
         return results
+
+    def _ocr_roi(self, base_image: np.ndarray, bbox: Tuple[int, int, int, int], label: str, work_dir: Path) -> List[str]:
+        """OCR a single region of interest and return text lines."""
+        try:
+            x1, y1, x2, y2 = bbox
+            crop = base_image[y1:y2, x1:x2]
+            processed = self._preprocess_for_ocr(crop, label, work_dir)
+            blocks = self._run_ocr_on_crop(processed, label)
+            lines = []
+            for block in blocks:
+                txt = str(block.get("text", "")).strip()
+                if txt:
+                    lines.append(txt)
+            logger.debug(f"ROI {label}: {len(lines)} lines")
+            return lines
+        except Exception as e:
+            logger.error(f"OCR failed for ROI {label}: {e}")
+            return []
     
     def _preprocess_for_ocr(self, crop: np.ndarray, col_name: str, work_dir: Path) -> np.ndarray:
         """Apply high-DPI preprocessing pipeline for optimal OCR"""
@@ -428,12 +503,27 @@ class OCRExtractor:
             import csv
 
             qa_log_path = work_dir / "ocr_extraction_qa.csv"
-            fieldnames = ["Row", "Qty", "Code", "Description", "Image_Codes", "Confidence", "Warnings"]
+            fieldnames = [
+                "Row",
+                "Qty",
+                "Code",
+                "Description",
+                "Image_Codes",
+                "FramesCherry",
+                "FramesBlack",
+                "Retouch",
+                "Confidence",
+                "Warnings",
+            ]
             with open(qa_log_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
 
                 # Data rows
+                frames_cherry_total = sum(v.get('cherry', 0) for v in self.frame_counts.values())
+                frames_black_total = sum(v.get('black', 0) for v in self.frame_counts.values())
+                retouch_summary = "; ".join(f"{x['qty']}x {x['name']}" for x in self.retouch_items)
+
                 for row in rows:
                     writer.writerow({
                         "Row": getattr(row, 'row_number', ''),
@@ -441,6 +531,9 @@ class OCRExtractor:
                         "Code": row.code or '',
                         "Description": row.desc or '',
                         "Image_Codes": row.imgs or '',
+                        "FramesCherry": frames_cherry_total,
+                        "FramesBlack": frames_black_total,
+                        "Retouch": retouch_summary,
                         "Confidence": f"{row.confidence:.1f}%",
                         "Warnings": '; '.join(row.warnings) if row.warnings else ''
                     })
