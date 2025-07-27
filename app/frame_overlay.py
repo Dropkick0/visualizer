@@ -473,4 +473,31 @@ class FrameOverlayEngine:
 def create_frame_overlay_engine() -> FrameOverlayEngine:
     """Factory function to create a frame overlay engine"""
     frames_dir = Path("Frames")
-    return FrameOverlayEngine(frames_dir) 
+    return FrameOverlayEngine(frames_dir)
+
+
+def apply_frames_simple(order_items: List[Dict], frame_counts: Dict[str, Dict[str, int]]) -> List[Dict]:
+    """Assign frame colors to order items based on parsed counts.
+
+    This helper does not split pairs or handle complex cases. It simply assigns
+    available Cherry frames first, then Black, decreasing the counts as frames
+    are used.
+    """
+
+    for item in order_items:
+        size = item.get("size", "").replace(" ", "")
+        if size in frame_counts:
+            counts = frame_counts[size]
+            if isinstance(counts, int):
+                counts = {"black": counts}
+                frame_counts[size] = counts
+
+            chosen = None
+            for color in ("cherry", "black"):
+                if counts.get(color, 0) > 0:
+                    counts[color] -= 1
+                    chosen = color.capitalize()
+                    break
+            if chosen:
+                item["frame_color"] = chosen
+    return order_items

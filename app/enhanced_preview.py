@@ -14,7 +14,12 @@ import math
 from .trio_composite import TrioCompositeGenerator, is_trio_product
 
 # Import frame overlay functionality
-from .frame_overlay import FrameOverlayEngine, FrameSpec, create_frame_overlay_engine
+from .frame_overlay import (
+    FrameOverlayEngine,
+    FrameSpec,
+    create_frame_overlay_engine,
+    apply_frames_simple,
+)
 
 
 class EnhancedPortraitPreviewGenerator:
@@ -1708,8 +1713,10 @@ class EnhancedPortraitPreviewGenerator:
             processed_items = items
             if frame_requirements:
                 logger.info(f"Applying frame requirements: {frame_requirements}")
-                processed_items = self.frame_engine.apply_frames_to_order_items(items, frame_requirements, frame_style_preferences)
-                logger.info(f"Processed items: {len(items)} -> {len(processed_items)} (after frame application)")
+                processed_items = apply_frames_simple(items, frame_requirements)
+                logger.info(
+                    f"Processed items: {len(items)} -> {len(processed_items)} (after frame application)"
+                )
             
             # STEP 5: Process all images to canonical portrait orientation and master crops
             self._process_images(processed_items)
