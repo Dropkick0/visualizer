@@ -17,7 +17,12 @@ def extract_image_codes_from_text(text: str) -> List[str]:
     codes = re.findall(r'\b(0\d{3})\b', text)
     return list(set(codes))  # Remove duplicates
 
-def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str]) -> List[Dict]:
+def map_product_codes_to_items(
+    extracted_codes: List[str],
+    image_codes: List[str],
+    ocr_description: str,
+    code_to_desc: Dict[str, str] | None = None,
+) -> List[Dict]:
     """Map extracted product codes to order items with proper image assignment"""
     print(f"🔄 Mapping {len(extracted_codes)} product codes to order items...")
     
@@ -51,24 +56,33 @@ def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str
         '2024': 1     # 1 20x24
     }
     
-    # Frame color extraction from OCR description
-    def extract_frame_color(product_code: str, description: str) -> str:
-        """Extract frame color from product description"""
-        desc_lower = description.lower()
-        
-        # For trio products, look for frame color keywords
-        if product_code in ['1020.5', '510.3']:
-            if 'cherry' in desc_lower:
-                return 'Cherry'
-            elif 'black' in desc_lower and 'frame' in desc_lower:
-                return 'Black'
-            else:
-                return 'Cherry'  # Default for trios
-        
-        # For individual prints, look for frame references
-        # (This would need more sophisticated parsing in real implementation)
-        return 'Black'  # Default frame color
+    # Frame and matte color extraction from OCR text
+    def extract_colors(product_code: str, description: str, ocr_text: str) -> tuple[str, str]:
+        """Extract frame and matte colors from OCR description"""
+        text = f"{description} {ocr_text}".lower()
+
+        frame_color = 'Black'
+        matte_color = 'Gray'
+
+        if 'cherry frame' in text:
+            frame_color = 'Cherry'
+        elif 'black frame' in text:
+            frame_color = 'Black'
+        elif 'white frame' in text:
+            frame_color = 'White'
+
+        if 'black digital mat' in text or 'black matte' in text:
+            matte_color = 'Black'
+        elif 'gray matte' in text or 'grey matte' in text:
+            matte_color = 'Gray'
+        elif 'white matte' in text:
+            matte_color = 'White'
+
+        return frame_color, matte_color
     
+    codes_for_assignment = image_codes or []
+    image_idx = 0
+
     for i, code in enumerate(extracted_codes):
         if code not in product_mapping:
             print(f"   ⚠️  Unknown product code: {code}")
@@ -77,38 +91,55 @@ def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str
         product_info = product_mapping[code]
         qty = quantity_mapping.get(code, 1)
         
-        # Extract frame color
-        frame_color = extract_frame_color(code, product_info['description'])
+        # Extract frame and matte colors from OCR description
+        desc_text = ocr_description
+        if code_to_desc and code in code_to_desc:
+            desc_text = code_to_desc[code]
+
+        frame_color, matte_color = extract_colors(
+            code, product_info['description'], desc_text
+        )
         
-        # Assign image codes based on product type
-        if product_info['type'] == 'wallets':
-            assigned_images = ['0033'] * 8  # Wallets use 0033
+        def next_code(idx: int) -> str:
+            if not codes_for_assignment:
+                return ""
+            return codes_for_assignment[idx % len(codes_for_assignment)]
+
+        if not codes_for_assignment:
+            assigned_images = []
+        elif product_info['type'] == 'wallets':
+            assigned_images = [next_code(image_idx)] * 8
+            image_idx += 1
         elif product_info['type'] == '5x7':
-            assigned_images = ['0033']  # 5x7 uses 0033
+            assigned_images = [next_code(image_idx)]
+            image_idx += 1
         elif product_info['type'] == '3.5x5':
-            assigned_images = ['0033'] * 4  # 3.5x5 sheet uses 0033
+            assigned_images = [next_code(image_idx)] * 4 if codes_for_assignment else []
+            image_idx += 1 if codes_for_assignment else 0
         elif product_info['type'] == '8x10':
-            assigned_images = ['0033']  # 8x10 uses 0033
+            assigned_images = [next_code(image_idx)] if codes_for_assignment else []
+            image_idx += 1 if codes_for_assignment else 0
         elif product_info['type'] == '10x13':
-            assigned_images = ['0102']  # 10x13 uses 0102
+            assigned_images = [next_code(image_idx)] if codes_for_assignment else []
+            image_idx += 1 if codes_for_assignment else 0
         elif product_info['type'] == '16x20':
-            assigned_images = ['0033']  # 16x20 uses 0033
+            assigned_images = [next_code(image_idx)] if codes_for_assignment else []
+            image_idx += 1 if codes_for_assignment else 0
         elif product_info['type'] == '20x24':
-            assigned_images = ['0102']  # 20x24 uses 0102
+            assigned_images = [next_code(image_idx)] if codes_for_assignment else []
+            image_idx += 1 if codes_for_assignment else 0
         elif product_info['type'] == 'trio':
-            if '10x20' in product_info['description']:
-                assigned_images = ['0033', '0044', '0039']  # 10x20 trio
-            else:
-                assigned_images = ['0039', '0033', '0044']  # 5x10 trio
+            assigned_images = [next_code(image_idx + i) for i in range(3)] if codes_for_assignment else []
+            image_idx += 3 if codes_for_assignment else 0
         else:
-            assigned_images = image_codes[:1] if image_codes else ['0033']
+            assigned_images = [next_code(image_idx)] if codes_for_assignment else []
+            image_idx += 1 if codes_for_assignment else 0
         
         # Create order items - IMPORTANT: Create multiple items for quantities > 1
         if product_info['type'] == 'trio':
             # For trios, create individual items for each quantity
             for trio_num in range(qty):
                 trio_size = product_info['size']
-                matte_color = 'Gray'  # Default matte color
                 
                 order_items.append({
                     'product_slug': f'trio_{trio_size.replace("x", "x")}_composite',
@@ -248,28 +279,38 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         
         print(f"✅ OCR extraction successful:")
         print(f"   • Rows extracted: {len(rows)}")
-        
-        # Get the extracted data
-        row = rows[0]  # Our column-isolated approach gives us one big row
-        print(f"   • Product codes: '{row.code}'")
-        print(f"   • Description: '{row.desc[:100]}...'")
-        print(f"   • Images: '{row.imgs}'")
+
+        # Combine text from all rows for parsing
+        codes_column = " ".join(r.code for r in rows)
+        desc_column = " ".join(r.desc for r in rows)
+        imgs_column = " ".join(r.imgs for r in rows)
+
+        code_to_desc = {}
+        for r in rows:
+            codes_in_row = re.findall(r"\b(\d+(?:\.\d+)?)\b", r.code)
+            for code in codes_in_row:
+                if len(code) >= 3 and code not in code_to_desc:
+                    code_to_desc[code] = r.desc
+
+        print(f"   • Product codes: '{codes_column}'")
+        print(f"   • Description: '{desc_column[:100]}...'")
+        print(f"   • Images: '{imgs_column}'")
         
         # Step 2: Parse extracted data  
         print(f"\n📋 Step 2: Parsing Extracted Data")
         print("=" * 60)
         
-        # Extract product codes from the code column
-        product_codes = re.findall(r'\b(\d+(?:\.\d+)?)\b', row.code)
-        product_codes = [c for c in product_codes if len(c) >= 3]  # Filter reasonable codes
-        
-        # Extract image codes from the images column and description
-        all_text = f"{row.imgs} {row.desc}"
+        # Extract product codes from the combined code column
+        product_codes = re.findall(r'\b(\d+(?:\.\d+)?)\b', codes_column)
+        product_codes = [c for c in product_codes if len(c) >= 3]
+
+        # Extract image codes from all combined text
+        all_text = f"{codes_column} {imgs_column} {desc_column}"
         image_codes = extract_image_codes_from_text(all_text)
         
-        # If no image codes in OCR, use the known ones from screenshot
+
         if not image_codes:
-            image_codes = ['0033', '0039', '0044', '0102']
+            print("   • No image codes detected in OCR")
         
         print(f"   • Found product codes: {product_codes}")
         print(f"   • Found image codes: {image_codes}")
@@ -278,7 +319,9 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"\n🔄 Step 3: Mapping to Order Items")
         print("=" * 60)
         
-        order_items = map_product_codes_to_items(product_codes, image_codes)
+        order_items = map_product_codes_to_items(
+            product_codes, image_codes, desc_column, code_to_desc
+        )
         
         if not order_items:
             print("❌ No order items created")
@@ -290,12 +333,15 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"\n📸 Step 4: Image Discovery")
         print("=" * 60)
         
-        # Use proper image search functionality
-        from app.image_search import create_image_searcher
-        from app.config import load_config
-        
-        config = load_config()
-        searcher = create_image_searcher(config)
+        # Use local folder for image search
+        from app.image_search import DropboxImageSearcher
+
+        local_dropbox = Path(__file__).parent / '8017_Lab_Order'
+        if local_dropbox.exists():
+            searcher = DropboxImageSearcher(str(local_dropbox))
+        else:
+            print("   ⚠️ Local '8017_Lab_Order' folder not found - image search disabled")
+            searcher = None
         
         if searcher:
             print(f"   • Searching in: {searcher.dropbox_root}")
