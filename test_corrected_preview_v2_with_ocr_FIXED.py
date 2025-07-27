@@ -17,7 +17,9 @@ def extract_image_codes_from_text(text: str) -> List[str]:
     codes = re.findall(r'\b(0\d{3})\b', text)
     return list(set(codes))  # Remove duplicates
 
-def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str]) -> List[Dict]:
+def map_product_codes_to_items(
+    extracted_codes: List[str], image_codes: List[str], ocr_description: str
+) -> List[Dict]:
     """Map extracted product codes to order items with proper image assignment"""
     print(f"🔄 Mapping {len(extracted_codes)} product codes to order items...")
     
@@ -51,23 +53,29 @@ def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str
         '2024': 1     # 1 20x24
     }
     
-    # Frame color extraction from OCR description
-    def extract_frame_color(product_code: str, description: str) -> str:
-        """Extract frame color from product description"""
-        desc_lower = description.lower()
-        
-        # For trio products, look for frame color keywords
-        if product_code in ['1020.5', '510.3']:
-            if 'cherry' in desc_lower:
-                return 'Cherry'
-            elif 'black' in desc_lower and 'frame' in desc_lower:
-                return 'Black'
-            else:
-                return 'Cherry'  # Default for trios
-        
-        # For individual prints, look for frame references
-        # (This would need more sophisticated parsing in real implementation)
-        return 'Black'  # Default frame color
+    # Frame and matte color extraction from OCR text
+    def extract_colors(product_code: str, description: str, ocr_text: str) -> tuple[str, str]:
+        """Extract frame and matte colors from OCR description"""
+        text = f"{description} {ocr_text}".lower()
+
+        frame_color = 'Black'
+        matte_color = 'Gray'
+
+        if 'cherry frame' in text:
+            frame_color = 'Cherry'
+        elif 'black frame' in text:
+            frame_color = 'Black'
+        elif 'white frame' in text:
+            frame_color = 'White'
+
+        if 'black digital mat' in text or 'black matte' in text:
+            matte_color = 'Black'
+        elif 'gray matte' in text or 'grey matte' in text:
+            matte_color = 'Gray'
+        elif 'white matte' in text:
+            matte_color = 'White'
+
+        return frame_color, matte_color
     
     image_idx = 0
 
@@ -79,8 +87,10 @@ def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str
         product_info = product_mapping[code]
         qty = quantity_mapping.get(code, 1)
         
-        # Extract frame color
-        frame_color = extract_frame_color(code, product_info['description'])
+        # Extract frame and matte colors from OCR description
+        frame_color, matte_color = extract_colors(
+            code, product_info['description'], ocr_description
+        )
         
         # Assign image codes dynamically based on extracted OCR codes
         if not image_codes:
@@ -88,6 +98,7 @@ def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str
 
         def next_code(idx: int) -> str:
             return image_codes[idx % len(image_codes)]
+
 
         if product_info['type'] == 'wallets':
             assigned_images = [next_code(image_idx)] * 8
@@ -122,7 +133,6 @@ def map_product_codes_to_items(extracted_codes: List[str], image_codes: List[str
             # For trios, create individual items for each quantity
             for trio_num in range(qty):
                 trio_size = product_info['size']
-                matte_color = 'Gray'  # Default matte color
                 
                 order_items.append({
                     'product_slug': f'trio_{trio_size.replace("x", "x")}_composite',
@@ -281,9 +291,9 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         all_text = f"{row.imgs} {row.desc}"
         image_codes = extract_image_codes_from_text(all_text)
         
-        # If no image codes in OCR, use the known ones from screenshot
+
         if not image_codes:
-            image_codes = ['0033', '0039', '0044', '0102']
+            print("   • No image codes detected in OCR")
         
         print(f"   • Found product codes: {product_codes}")
         print(f"   • Found image codes: {image_codes}")
@@ -292,7 +302,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"\n🔄 Step 3: Mapping to Order Items")
         print("=" * 60)
         
-        order_items = map_product_codes_to_items(product_codes, image_codes)
+        order_items = map_product_codes_to_items(product_codes, image_codes, row.desc)
         
         if not order_items:
             print("❌ No order items created")
@@ -304,6 +314,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"\n📸 Step 4: Image Discovery")
         print("=" * 60)
         
+
         # Use proper image search functionality
         from app.image_search import create_image_searcher
         from app.config import load_config
@@ -317,6 +328,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
                 config.DROPBOX_ROOT = str(local_dropbox)
 
         searcher = create_image_searcher(config)
+
         
         if searcher:
             print(f"   • Searching in: {searcher.dropbox_root}")
