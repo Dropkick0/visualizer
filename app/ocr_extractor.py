@@ -33,8 +33,8 @@ from .bbox_map import (
 
 # --- Additional OCR regions for frames/retouch --------------------------------
 # Coordinates tuned for the reference 1680x1050 screenshot resolution.
-FRAMES_TABLE = (1120, 500, 1580, 760)
-RETOUCH_BOX = (970, 300, 1270, 450)
+FRAMES_TABLE = (953, 593, 1385, 700)
+RETOUCH_BOX = (1250, 250, 1370, 380)
 
 # Regular expression patterns for parsing the extra tables
 FRAME_ROW_RE = re.compile(
