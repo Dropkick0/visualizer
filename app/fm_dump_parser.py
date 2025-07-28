@@ -40,7 +40,7 @@ def _split_imgs(val: str) -> List[str]:
     if not val:
         return []
     parts = re.split(r'[\s,]+', val)
-    return [p for p in parts if p]
+    return [p.zfill(4) for p in parts if p]
 
 
 def parse_fm_dump(tsv_path: str) -> ParsedOrder:
