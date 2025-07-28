@@ -264,11 +264,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         
         # Extract rows using our proven bounding boxes
         print(f"📸 Extracting from: {screenshot_file}")
-        try:
-            rows = extractor.extract_rows(str(screenshot_file))
-        except Exception as e:
-            print(f"❌ OCR extraction failed: {e}")
-            return False
+        rows = extractor.extract_rows(str(screenshot_file))
         
         if not rows:
             print("❌ No rows extracted from OCR")
