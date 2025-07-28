@@ -58,11 +58,7 @@ def test_production_ocr():
         
         # Extract rows using column-isolated approach
         extraction_start = time.time()
-        try:
-            rows = extractor.extract_rows(screenshot_path, work_dir)
-        except Exception as e:
-            print(f"❌ OCR extraction failed: {e}")
-            return False
+        rows = extractor.extract_rows(screenshot_path, work_dir)
         extraction_time = time.time() - extraction_start
         
         print(f"✅ Extraction completed in {extraction_time:.3f}s")
