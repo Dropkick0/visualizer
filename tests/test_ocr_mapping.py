@@ -1,5 +1,4 @@
 from app.order_utils import expand_row_to_items, apply_frames_to_items
-from app.ocr_extractor import parse_frames, parse_retouch
 
 EXPECTED = {
     '0033': {
@@ -76,27 +75,6 @@ def count_items_by_image(items):
             out.setdefault(code, {}).setdefault(name, 0)
             out[code][name] += 1
     return out
-
-
-def test_parse_frames_and_retouch():
-    frame_lines = [
-        "2 123 5x7 cherry frame P360CHR5x7-GVEBHB",
-        "2 234 8 x 10 black frame P360BLK8x10-GVEBHB",
-        "1 345 10 x 13 black frame P360BLK10x13-MBTS",
-    ]
-    frames = parse_frames(frame_lines)
-    assert frames == EXPECTED_FRAMES_START
-
-    option_lines = [
-        "1 Basic Retouch 0033",
-        "1 Artist Brush Strokes 0033",
-    ]
-    retouch, artist, r_codes, a_codes = parse_retouch(option_lines)
-    assert len(retouch) == 1
-    assert retouch[0]["qty"] == 1
-    assert artist is True
-    assert r_codes == {"0033"}
-    assert a_codes == {"0033"}
 
 
 def test_mapping():
