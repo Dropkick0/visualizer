@@ -1,4 +1,6 @@
+from pathlib import Path
 from app.order_utils import expand_row_to_items, apply_frames_to_items
+from app.ocr_extractor import OCRExtractor
 
 EXPECTED = {
     '0033': {
@@ -125,3 +127,14 @@ def test_mapping():
     for comp in COMPOSITES:
         name = comp['product_name']
         assert EXPECTED_COMPOSITES[name] == comp['images']
+
+
+def test_row_reconstruction(temp_work_dir):
+    extractor = OCRExtractor()
+    cols = {}
+    for c in ['COL_QTY', 'COL_CODE', 'COL_DESC', 'COL_IMG']:
+        data = extractor._mock_ocr_result(c)
+        cols[c] = [(d['text'], d['y_position']) for d in data]
+    rows = extractor._reconstruct_rows(cols)
+    assert len(rows) == 9
+    assert rows[0].imgs == '0033'

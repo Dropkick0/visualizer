@@ -64,10 +64,15 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
     frame_counts: Dict[str, Dict[str, int]] = {}
     for ln in lines:
         m = FRAME_ROW.search(ln)
-        if not m:
-            continue
-        qty = int(m.group("qty"))
-        desc = m.group("desc")
+        if m:
+            qty = int(m.group("qty"))
+            desc = m.group("desc")
+        else:
+            alt = re.search(r"(?P<qty>\d+)\s+(?P<size>\d+\s*x\s*\d+)\s+(?P<color>black|cherry)\s+frame", ln, re.I)
+            if not alt:
+                continue
+            qty = int(alt.group("qty"))
+            desc = f"{alt.group('size')} {alt.group('color')} frame"
         size_m = SIZE_RE.search(desc)
         color_m = COLOR_RE.search(desc)
         if not size_m or not color_m:
@@ -85,9 +90,12 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
 def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str], Set[str]]:
     """Parse retouch entries and detect Artist Series with image codes."""
     retouch: List[Dict[str, int]] = []
-    artist_series = False
     retouch_codes: Set[str] = set()
     artist_codes: Set[str] = set()
+
+    roi_text = " ".join(lines).lower()
+    artist_series = "artist brush strokes" in roi_text
+
     for ln in lines:
         m = OPTION_ROW.search(ln)
         if not m:
@@ -97,13 +105,14 @@ def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str
             continue
         desc = m.group("desc")
         desc_lower = desc.lower()
-        codes = re.findall(r"\b\d{3,4}\b", desc)
+        codes = re.findall(r"\b00\d{2}\b", desc)
         if any(k in desc_lower for k in ARTIST_KEYS):
             artist_series = True
             artist_codes.update(codes)
         elif any(k in desc_lower for k in RETOUCH_KEYS):
             retouch.append({"name": desc.strip(), "qty": qty})
             retouch_codes.update(codes)
+
     return retouch, artist_series, retouch_codes, artist_codes
 
 
@@ -409,8 +418,22 @@ class OCRExtractor:
         if not cols:
             return []
 
-        # Sort each column by y position
+        # Sort each column by y position and filter out header lines
         sorted_cols = {k: sorted(v, key=lambda t: t[1]) for k, v in cols.items()}
+
+        def _filter_headers(lines: List[tuple]) -> List[tuple]:
+            filtered = []
+            for text, y in lines:
+                if text.strip().lower() in {'portraits', 'images and sequence'}:
+                    continue
+                filtered.append((text, y))
+            return filtered
+
+        if 'COL_CODE' in sorted_cols:
+            sorted_cols['COL_CODE'] = _filter_headers(sorted_cols['COL_CODE'])
+        if 'COL_QTY' in sorted_cols:
+            sorted_cols['COL_QTY'] = _filter_headers(sorted_cols['COL_QTY'])
+
         anchor_col = sorted_cols.get('COL_CODE') or sorted_cols.get('COL_QTY') or []
         if not anchor_col:
             return []
@@ -419,7 +442,7 @@ class OCRExtractor:
         y_vals = [y for _, y in anchor_col]
         diffs = [b - a for a, b in zip(y_vals, y_vals[1:])] or [30]
         line_height = sorted(diffs)[len(diffs) // 2]
-        tol = line_height * 0.6
+        tol = line_height * 0.8
 
         def match_line(y_anchor: float, col: List[tuple]):
             if not col:
@@ -448,6 +471,9 @@ class OCRExtractor:
 
         row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'], y_position=r['y']) for r in rows]
         logger.debug("Reconstructed %d rows", len(row_records))
+        n_rows = len(row_records)
+        if n_rows < 5:
+            raise ValueError(f"Row reconstruction failed: got {n_rows}")
         return row_records
     
     def _clean_rows(self, rows: List[RowRecord]) -> List[RowRecord]:
