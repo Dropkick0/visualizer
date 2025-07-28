@@ -9,6 +9,7 @@ import re
 import difflib
 import time
 import json
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set
 from dataclasses import dataclass
@@ -69,6 +70,20 @@ from .bbox_map import (
 # Coordinates tuned for the reference 1680x1050 screenshot resolution.
 FRAMES_TABLE = (953, 593, 1385, 700)
 RETOUCH_BOX = (1250, 250, 1370, 380)
+
+# ----- Row grid tuning -----
+ROW_COUNT_DEFAULT = 18
+ORDER_ROI_TOP = 140     # px from screenshot top
+ORDER_ROI_BOTTOM = 1850 # px from screenshot top
+ROW_EXTRA_PAD = 6       # px pad added above/below each row
+
+# Optional manual tweaks: row_index -> (dy_top, dy_bot)
+ROW_MANUAL_OFFSETS = {
+    # Example: 3: (-4, 8)
+}
+
+# Toggle row-based OCR via environment variable
+SINGLE_LINE_MODE = os.getenv("SINGLE_LINE_MODE", "0") == "1"
 
 # Regular expression patterns for parsing the extra tables
 # FRAMES table contains quantity, frame number and a free form description that
@@ -155,6 +170,33 @@ def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str
     return retouch, artist_series, retouch_codes, artist_codes
 
 
+def build_row_bboxes(img_h: int) -> List[Tuple[int, int, Optional[int], int]]:
+    """Build a list of row bounding boxes covering the order table."""
+    top = ORDER_ROI_TOP
+    bottom = ORDER_ROI_BOTTOM if ORDER_ROI_BOTTOM > 0 else img_h + ORDER_ROI_BOTTOM
+    total_h = bottom - top
+    row_h = total_h / ROW_COUNT_DEFAULT
+
+    bboxes: List[Tuple[int, int, Optional[int], int]] = []
+    for i in range(ROW_COUNT_DEFAULT):
+        y1 = int(top + i * row_h)
+        y2 = int(top + (i + 1) * row_h)
+        dy_top, dy_bot = ROW_MANUAL_OFFSETS.get(i, (0, 0))
+        y1 = max(0, y1 + dy_top - ROW_EXTRA_PAD)
+        y2 = min(img_h, y2 + dy_bot + ROW_EXTRA_PAD)
+        bboxes.append((0, y1, None, y2))
+    return bboxes
+
+
+ROW_RE = re.compile(
+    r'^\s*(?P<qty>\d+)\s+'
+    r'(?P<code>\d+(?:\.\d+)?)\s+'
+    r'(?P<desc>.+?)'
+    r'(?:\s+(?P<imgs>(?:\d{3,4}(?:\s*,\s*\d{3,4})*)))?\s*$',
+    re.I
+)
+
+
 @dataclass
 class OcrLine:
     top: float
@@ -188,6 +230,7 @@ class OCRExtractor:
         self.ocr_engine = 'winocr'
         assert self.ocr_engine == 'winocr', "Tesseract must not be used"
         self.performance_stats = {}
+        self.single_line_mode = SINGLE_LINE_MODE
         self.frame_counts: Dict[str, Dict[str, int]] = {}
         self.retouch_items: List[Dict[str, int]] = []
         self.artist_series: bool = False
@@ -228,7 +271,7 @@ class OCRExtractor:
             work_dir = Path("tmp")
         work_dir.mkdir(exist_ok=True)
         
-        logger.info(f"Starting column-isolated OCR extraction from {screenshot_path}")
+        logger.info(f"Starting OCR extraction from {screenshot_path}")
         
         try:
             # Step 1: Validate layout hasn't drifted
@@ -240,8 +283,8 @@ class OCRExtractor:
             if base_image is None:
                 raise ValueError(f"Could not load screenshot: {screenshot_path}")
             
-            # Step 3: Run column-isolated OCR
-            ocr_results = self._run_column_isolated_ocr(base_image, work_dir)
+            from PIL import Image
+            pil_img = Image.fromarray(cv2.cvtColor(base_image, cv2.COLOR_BGR2RGB))
 
             # Additional ROIs for frames and retouch sections
             self.frames_lines = self._ocr_roi(base_image, FRAMES_TABLE, "FRAMES", work_dir)
@@ -257,8 +300,11 @@ class OCRExtractor:
             logger.info(f"Retouch parsed: {self.retouch_items}")
             logger.info(f"Artist series detected: {self.artist_series}")
             
-            # Step 4: Reconstruct rows by Y-centroid matching
-            rows = self._reconstruct_rows(ocr_results)
+            if self.single_line_mode:
+                rows = self._ocr_rows_full_line(pil_img)
+            else:
+                ocr_results = self._run_column_isolated_ocr(base_image, work_dir)
+                rows = self._reconstruct_rows(ocr_results)
             
             # Step 5: Apply domain-aware fuzzy corrections
             cleaned_rows = self._clean_rows(rows)
@@ -308,6 +354,32 @@ class OCRExtractor:
         except Exception as e:
             logger.warning(f"Layout validation failed: {e}")
             return False
+
+    def _ocr_rows_full_line(self, pil_img) -> List[RowRecord]:
+        """OCR each physical row as a full line using fixed grid."""
+        h = pil_img.height
+        boxes = build_row_bboxes(h)
+        rows: List[RowRecord] = []
+        for idx, (x1, y1, x2, y2) in enumerate(boxes):
+            crop = pil_img.crop((x1, y1, x2 or pil_img.width, y2))
+            ocr_lines = win_ocr(crop)
+            text = " ".join(txt for (_, _), txt in ocr_lines).strip()
+            if not text:
+                continue
+            m = ROW_RE.match(text)
+            if not m:
+                logger.debug("Row %d unparsable: %r", idx, text)
+                continue
+            rows.append(
+                RowRecord(
+                    qty=m.group('qty'),
+                    code=m.group('code'),
+                    desc=m.group('desc').strip(),
+                    imgs=m.group('imgs') or '',
+                    y_position=(y1 + y2) / 2,
+                )
+            )
+        return rows
     
     def _run_column_isolated_ocr(self, base_image: np.ndarray, work_dir: Path) -> Dict[str, List[OcrLine]]:
         """Run OCR on each column separately with high-DPI upscaling"""
