@@ -264,36 +264,31 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         
         # Extract rows using our proven bounding boxes
         print(f"📸 Extracting from: {screenshot_file}")
-        try:
-            rows = extractor.extract_rows(str(screenshot_file))
-        except Exception as e:
-            print(f"❌ OCR extraction failed: {e}")
-            return False
-
+        rows = extractor.extract_rows(str(screenshot_file))
+        
         if not rows:
             print("❌ No rows extracted from OCR")
             return False
-
+        
         print("✅ OCR extraction successful:")
         print(f"   • Rows extracted: {len(rows)}")
-        for i, row in enumerate(rows, 1):
-            print(f"   Row {i}: Qty:{row.qty} Code:{row.code} Imgs:{row.imgs}")
-
-        # Merge all row text for parsing
-        all_codes = " ".join(r.code for r in rows)
-        all_desc = " ".join(r.desc for r in rows)
-        all_imgs = " ".join(r.imgs for r in rows)
-
-        # Step 2: Parse extracted data
+        
+        # Get the extracted data
+        row = rows[0]  # Our column-isolated approach gives us one big row
+        print(f"   • Product codes: '{row.code}'")
+        print(f"   • Description: '{row.desc[:100]}...'")
+        print(f"   • Images: '{row.imgs}'")
+        
+        # Step 2: Parse extracted data  
         print("\n📋 Step 2: Parsing Extracted Data")
         print("=" * 60)
         
         # Extract product codes from the code column
-        product_codes = re.findall(r'\b(\d+(?:\.\d+)?)\b', all_codes)
-        product_codes = [c for c in product_codes if len(c) >= 3]
-
+        product_codes = re.findall(r'\b(\d+(?:\.\d+)?)\b', row.code)
+        product_codes = [c for c in product_codes if len(c) >= 3]  # Filter reasonable codes
+        
         # Extract image codes from the images column and description
-        all_text = f"{all_imgs} {all_desc}"
+        all_text = f"{row.imgs} {row.desc}"
         print(f"   • OCR text for codes: '{all_text[:100]}...'")
         image_codes = extract_image_codes_from_text(all_text)
 
@@ -308,7 +303,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print("\n🔄 Step 3: Mapping to Order Items")
         print("=" * 60)
         
-        order_items = map_product_codes_to_items(product_codes, image_codes, all_desc)
+        order_items = map_product_codes_to_items(product_codes, image_codes, row.desc)
         
         if not order_items:
             print("❌ No order items created")
