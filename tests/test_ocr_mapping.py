@@ -1,4 +1,5 @@
 from app.order_utils import expand_row_to_items, apply_frames_to_items
+from app.config import load_product_config
 
 EXPECTED = {
     '0033': {
@@ -41,13 +42,13 @@ EXPECTED_COMPOSITES = {
 
 # Sample rows based on OCR extraction
 ROWS = [
-    {'code': 'wallets_8_sheet', 'qty': 12, 'imgs': '0033'},
-    {'code': '5x7_pair', 'qty': 1, 'imgs': '0033'},
-    {'code': '3.5x5_sheet4', 'qty': 3, 'imgs': '0033'},
-    {'code': '8x10_basic', 'qty': 1, 'imgs': '0033'},
-    {'code': '16x20_basic', 'qty': 1, 'imgs': '0033'},
-    {'code': '10x13_basic', 'qty': 1, 'imgs': '0102'},
-    {'code': '20x24_basic', 'qty': 1, 'imgs': '0102'},
+    {'code': '200', 'qty': 12, 'imgs': '0033'},
+    {'code': '570', 'qty': 1, 'imgs': '0033'},
+    {'code': '350', 'qty': 3, 'imgs': '0033'},
+    {'code': '810', 'qty': 1, 'imgs': '0033'},
+    {'code': '1620', 'qty': 1, 'imgs': '0033'},
+    {'code': '1013', 'qty': 1, 'imgs': '0102'},
+    {'code': '2024', 'qty': 1, 'imgs': '0102'},
 ]
 
 COMPOSITES = [
@@ -78,9 +79,10 @@ def count_items_by_image(items):
 
 
 def test_mapping():
+    cfg = load_product_config()["products_by_code"]
     items = []
     for row in ROWS:
-        items.extend(expand_row_to_items(row))
+        items.extend(expand_row_to_items(row, cfg))
     items.extend(COMPOSITES)
 
     import copy

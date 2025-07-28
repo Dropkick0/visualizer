@@ -9,12 +9,14 @@ from pathlib import Path
 import re
 from typing import Dict, List
 
+from app.order_utils import expand_row_to_items, apply_frames_to_items
+
 # Add app directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 def extract_image_codes_from_text(text: str) -> List[str]:
     """Extract 4-digit image codes from text"""
-    codes = re.findall(r'\b(0\d{3})\b', text)
+    codes = re.findall(r'\b(\d{4})\b', text)
     return list(set(codes))  # Remove duplicates
 
 
@@ -60,9 +62,10 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         from app.ocr_extractor import OCRExtractor
         from app.enhanced_preview import EnhancedPortraitPreviewGenerator
         from app.config import load_product_config
-        
+
         # Load configuration
         products_config = load_product_config()
+        products_cfg = products_config["products_by_code"]
         print(f"✅ Loaded {len(products_config.get('products', []))} product configurations")
         
         # Step 1: OCR Extraction with our working system
@@ -123,11 +126,16 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print("\n🔄 Step 3: Mapping to Order Items")
         print("=" * 60)
 
-        from app.order_utils import expand_row_to_items
         order_items = []
         for r in rows:
             base = {"qty": r.qty or 0, "code": r.code, "imgs": r.imgs}
-            order_items.extend(expand_row_to_items(base))
+            try:
+                order_items.extend(expand_row_to_items(base, products_cfg))
+            except KeyError as e:
+                print(f"❌ {e} in {base}")
+                return False
+
+        order_items = apply_frames_to_items(order_items, extractor.frame_counts.copy())
         
         if not order_items:
             print("❌ No order items created")
@@ -220,7 +228,7 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
             print("🎯 Successfully used working OCR to extract and render actual FileMaker order")
             print("📊 Order contained:")
             for item in order_items:
-                print(f"   • {item['display_name']}")
+                print(f"   • {item.get('display_name', item['product_name'])}")
             return True
         else:
             print("❌ Failed to create preview")
@@ -236,10 +244,10 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python test_corrected_preview_v2_with_ocr_FIXED.py <screenshot_path>")
         sys.exit(1)
-    
+
     screenshot_path = sys.argv[1]
     success = test_ocr_based_preview_fixed(screenshot_path)
-    
+
     if not success:
         print("\nPress Enter to exit...")
-        input() 
+        input()
