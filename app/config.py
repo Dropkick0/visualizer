@@ -149,20 +149,23 @@ class FrameConfig(BaseModel):
     opening_boxes: List[List[float]] = []  # List of [x1, y1, x2, y2] relative coords 0-1
 
 
-def load_product_config() -> Dict[str, ProductConfig]:
+def load_product_config() -> Dict:
     """Load product configuration from YAML"""
     config_data = load_yaml_config("config/products.yaml")
+    cfg = {"products": config_data.get("products", [])}
+
     products = {}
-    
-    for item in config_data.get("products", []):
+    for item in cfg["products"]:
         try:
             product = ProductConfig(**item)
             products[product.slug] = product
         except Exception as e:
             logger.error(f"Error loading product config {item.get('slug', 'unknown')}: {e}")
-    
+
+    cfg["products_by_code"] = {p["code"]: p for p in cfg["products"]}
+    cfg["products_by_slug"] = products
     logger.info(f"Loaded {len(products)} product configurations")
-    return products
+    return cfg
 
 
 def load_frame_config() -> Dict[str, FrameConfig]:
