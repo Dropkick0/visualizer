@@ -76,7 +76,6 @@ def parse_fm_dump(tsv_path: str) -> ParsedOrder:
         code = by_label.get(f'Prod R{i}', '').strip() or None
         desc = by_label.get(f'Desc R{i}', '').strip()
         imgs = _split_imgs(by_label.get(f'Img # R{i}', '').strip())
-        imgs = [c.zfill(4) for c in imgs]
         artist = by_label.get(f'Artist Series R{i}', '').strip() or None
         if not any([qty, code, desc, imgs, artist]):
             continue
