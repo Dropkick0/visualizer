@@ -11,6 +11,8 @@ PRODUCT_SPECS = {
         'name': '5x7 Pair',
         'size': '5x7',
         'category': 'sheet',
+        'frame_eligible': True,
+        'frame_qty': 2,
     },
     '3.5x5_sheet4': {
         'name': '3.5x5 Sheet of 4',
@@ -57,20 +59,27 @@ def expand_row_to_items(row: Dict, product_specs: Dict[str, Dict] = PRODUCT_SPEC
     spec = product_specs.get(code, {})
     items: List[Dict] = []
     for _ in range(qty):
-        items.append({
+        item = {
             'product_code': code,
             'product_name': spec.get('name', code),
             'size': spec.get('size', ''),
             'images': imgs.copy(),
             'category': spec.get('category', ''),
-        })
+        }
+        if 'frame_eligible' in spec:
+            item['frame_eligible'] = spec['frame_eligible']
+        if 'frame_qty' in spec:
+            item['frame_qty'] = spec['frame_qty']
+        items.append(item)
     return items
 
 def apply_frames_to_items(items: List[Dict], frame_counts: Dict[str, Dict[str, int]]):
     """Assign frames to items consuming counts and preferring labeled colors."""
     for it in items:
-        # Only individual prints should receive frames. Skip composites and sheets.
-        if it.get('category') in {'trio_composite', 'sheet'}:
+        # Skip composites; respect frame_eligible flag (default True for prints).
+        if it.get('category') == 'trio_composite':
+            continue
+        if not it.get('frame_eligible', it.get('category') == 'print'):
             continue
         key = it.get('size', '').replace(' ', '')
         pool = frame_counts.get(key)
@@ -82,9 +91,10 @@ def apply_frames_to_items(items: List[Dict], frame_counts: Dict[str, Dict[str, i
             desired = 'cherry'
         elif 'black' in name:
             desired = 'black'
+        qty = it.get('frame_qty', 1)
         for color in ([desired] if desired else ['cherry', 'black']):
-            if pool.get(color, 0) > 0:
+            if pool.get(color, 0) >= qty:
                 it['frame_color'] = color.capitalize()
-                pool[color] -= 1
+                pool[color] -= qty
                 break
     return items
