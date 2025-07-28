@@ -1,10 +1,13 @@
 import os
 
 # Row image inflation constants for Windows OCR
-ROW_SCALE_X = 4
-ROW_SCALE_Y = 3
-ROW_MIN_WIDTH = 1200
-ROW_SIDE_PAD = 40
+ROW_SCALE_X = 5
+ROW_SCALE_Y = 4
+ROW_MIN_WIDTH = 1600
+ROW_SIDE_PAD = 60
+
+# Debug flag for per-row outputs
+OCR_DEBUG_ROWS = os.getenv("OCR_DEBUG_ROWS", "1") == "1"
 
 # Row band geometry defaults (override via environment variables)
 ROW_COUNT_DEFAULT = int(os.getenv("OCR_ROW_COUNT", 18))

@@ -88,6 +88,7 @@ from .ocr_constants import (
     ORDER_ROI_RIGHT,
     ROW_EXTRA_PAD,
     ROW_MANUAL_OFFSETS,
+    OCR_DEBUG_ROWS,
 )
 
 
@@ -374,6 +375,10 @@ class OCRExtractor:
 
                 pil_img = Image.fromarray(cv2.cvtColor(base_image, cv2.COLOR_BGR2RGB))
                 rows = self._ocr_rows_full_line(pil_img)
+                if len(rows) == 0:
+                    overlay = Path("tmp/rows/rows_overlay.png")
+                    overlay_path = overlay if overlay.exists() else "tmp/rows/rows_overlay.png"
+                    raise RuntimeError(f"Row OCR produced 0 rows. See {overlay_path}")
                 ocr_results = None
             else:
                 raise AssertionError("Column mode disabled in production")
@@ -477,13 +482,21 @@ class OCRExtractor:
                 ocr_lines = win_ocr(bw.convert("RGB"))
                 raw_lines = [t for (_, t) in sorted(ocr_lines, key=lambda t: t[0][0])]
                 raw = " ".join(raw_lines).strip()
+                if not raw:
+                    bw_np = np.array(bw, dtype=np.uint8)
+                    _, otsu = cv2.threshold(bw_np, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                    dil = cv2.dilate(otsu, np.ones((2, 2), np.uint8), iterations=1)
+                    ocr_lines = win_ocr(Image.fromarray(dil).convert("RGB"))
+                    raw_lines = [t for (_, t) in sorted(ocr_lines, key=lambda t: t[0][0])]
+                    raw = " ".join(raw_lines).strip()
 
-            crop.save(debug_dir / f"row_{idx:02d}.png")
-            inflated.save(debug_dir / f"row_{idx:02d}_big.png")
-            with open(debug_dir / f"row_{idx:02d}_raw.txt", "w", encoding="utf-8") as f:
-                f.write("\n".join(raw_lines) or "<EMPTY>")
-            with open(debug_dir / f"row_{idx:02d}.txt", "w", encoding="utf-8") as f:
-                f.write(raw or "<EMPTY>")
+            if OCR_DEBUG_ROWS:
+                crop.save(debug_dir / f"row_{idx:02d}.png")
+                inflated.save(debug_dir / f"row_{idx:02d}_big.png")
+                with open(debug_dir / f"row_{idx:02d}_raw.txt", "w", encoding="utf-8") as f:
+                    f.write("\n".join(raw_lines) or "<EMPTY>")
+                with open(debug_dir / f"row_{idx:02d}.txt", "w", encoding="utf-8") as f:
+                    f.write(raw or "<EMPTY>")
 
             draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
             draw.text((x1 + 2, y1 + 2), f"{idx}", fill="red")
@@ -833,8 +846,8 @@ class OCRExtractor:
         if not text:
             return ""
 
-        # Extract all 3- or 4-digit codes preserving OCR order
-        codes = re.findall(r"\b\d{3,4}\b", str(text))
+        # Extract only 4-digit codes starting with 0 to avoid product codes
+        codes = re.findall(r"\b0\d{3}\b", str(text))
         return ", ".join(codes)
 
     def _validate_rows(self, rows: List[RowRecord], work_dir: Path) -> List[RowRecord]:
