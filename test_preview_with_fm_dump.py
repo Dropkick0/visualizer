@@ -13,7 +13,7 @@ from app.config import load_product_config, load_config
 from app.image_search import create_image_searcher
 from app.enhanced_preview import EnhancedPortraitPreviewGenerator
 from test_corrected_preview_v2_with_ocr_FIXED import (
-    rows_to_order_items,
+    map_product_codes_to_items,
     determine_frame_requirements_from_items,
 )
 
@@ -26,9 +26,12 @@ def run_preview(tsv_path: str = "fm_dump.tsv") -> bool:
     rows = parsed.rows
     print(f"✅ Loaded {len(rows)} rows from TSV")
 
-    print("\n🔄 Step 2: Map TSV rows")
-    order_items = rows_to_order_items(parsed.rows, parsed.frames, products_cfg, parsed.retouch_imgs)
+    product_codes = [r.code for r in rows if r.code]
     image_codes = [c for r in rows for c in r.imgs]
+    all_desc = " ".join(r.desc or "" for r in rows)
+
+    print("\n🔄 Step 2: Map TSV rows with existing product mapping")
+    order_items = map_product_codes_to_items(product_codes, image_codes, all_desc)
     print(f"✅ Created {len(order_items)} order items")
 
     cfg = load_config()
