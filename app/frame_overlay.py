@@ -477,27 +477,40 @@ def create_frame_overlay_engine() -> FrameOverlayEngine:
 
 
 def apply_frames_simple(order_items: List[Dict], frame_counts: Dict[str, Dict[str, int]]) -> List[Dict]:
-    """Assign frame colors to order items based on parsed counts.
-
-    This helper does not split pairs or handle complex cases. It simply assigns
-    available Cherry frames first, then Black, decreasing the counts as frames
-    are used.
-    """
+    """Assign frame colors to order items based on parsed counts."""
 
     for item in order_items:
-        size = item.get("size", "").replace(" ", "")
-        if size in frame_counts:
-            counts = frame_counts[size]
-            if isinstance(counts, int):
-                counts = {"black": counts}
-                frame_counts[size] = counts
+        # Skip trio composites - they already include specific frame info
+        if item.get("category") == "trio_composite":
+            continue
 
-            chosen = None
-            for color in ("cherry", "black"):
-                if counts.get(color, 0) > 0:
-                    counts[color] -= 1
-                    chosen = color.capitalize()
+        size = item.get("size", "").replace(" ", "")
+        colors = frame_counts.get(size)
+        if not colors:
+            continue
+
+        if isinstance(colors, int):
+            colors = {"black": colors}
+            frame_counts[size] = colors
+
+        preferred = None
+        name = item.get("product_name", "").lower()
+        if "cherry" in name:
+            preferred = "cherry"
+        elif "black" in name:
+            preferred = "black"
+
+        chosen = None
+        if preferred and colors.get(preferred, 0) > 0:
+            chosen = preferred
+        else:
+            for c in ("cherry", "black"):
+                if colors.get(c, 0) > 0:
+                    chosen = c
                     break
-            if chosen:
-                item["frame_color"] = chosen
+
+        if chosen:
+            item["frame_color"] = chosen.capitalize()
+            colors[chosen] -= 1
+
     return order_items

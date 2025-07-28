@@ -8,6 +8,7 @@ import numpy as np
 import re
 import difflib
 import time
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, NamedTuple
 from collections import defaultdict
@@ -37,38 +38,56 @@ FRAMES_TABLE = (953, 593, 1385, 700)
 RETOUCH_BOX = (1250, 250, 1370, 380)
 
 # Regular expression patterns for parsing the extra tables
-FRAME_ROW_RE = re.compile(
-    r"(?P<qty>\d+)\s+(?P<num>\d+)\s+(?P<size>\d+\s*x\s*\d+)\s+(?P<color>black|cherry)",
-    re.IGNORECASE,
-)
-RETOUCH_RE = re.compile(r"(?P<qty>\d+)\s+(?P<name>Artist brush strokes.*)", re.I)
+# FRAMES table contains quantity, frame number and a free form description that
+# includes the size and color.  The OCR noise can vary, so we first capture the
+# three main columns then search the description for the size/color keywords.
+FRAME_ROW = re.compile(r"^(?P<qty>\d+)\s+(?P<num>\d+)\s+(?P<desc>.+)$", re.I)
+SIZE_RE = re.compile(r"(\d+\s*x\s*\d+)", re.I)
+COLOR_RE = re.compile(r"\b(cherry|black)\b", re.I)
+
+# Retouch/Artist Series options share a box. We'll look for common keywords in
+# the description text and track their quantities separately.
+OPTION_ROW = re.compile(r"^(?P<qty>\d+)\s+(?P<desc>.+)$", re.I)
+RETOUCH_KEYS = ["retouch", "softens facial lines", "whitens teeth", "blends skin tones"]
+ARTIST_KEYS = ["artist brush", "artist series"]
 
 
 def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
     """Parse frame counts from OCR lines."""
     frame_counts: Dict[str, Dict[str, int]] = {}
     for ln in lines:
-        m = FRAME_ROW_RE.search(ln)
+        m = FRAME_ROW.search(ln)
         if not m:
             continue
-        size = m.group("size").replace(" ", "")
-        color = m.group("color").lower()
         qty = int(m.group("qty"))
+        desc = m.group("desc")
+        size_m = SIZE_RE.search(desc)
+        color_m = COLOR_RE.search(desc)
+        if not size_m or not color_m:
+            continue
+        size = size_m.group(1).replace(" ", "")
+        color = color_m.group(1).lower()
         frame_counts.setdefault(size, {}).setdefault(color, 0)
         frame_counts[size][color] += qty
     return frame_counts
 
 
 def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool]:
-    """Parse retouch entries from OCR lines and detect Artist Series."""
-    retouch = []
+    """Parse retouch entries and detect Artist Series."""
+    retouch: List[Dict[str, int]] = []
     artist_series = False
     for ln in lines:
-        if "artist brush strokes" in ln.lower():
+        m = OPTION_ROW.search(ln)
+        if not m:
+            continue
+        qty = int(m.group("qty"))
+        if qty <= 0:
+            continue
+        desc = m.group("desc").lower()
+        if any(k in desc for k in ARTIST_KEYS):
             artist_series = True
-        m = RETOUCH_RE.search(ln)
-        if m and int(m.group("qty")) > 0:
-            retouch.append({"name": m.group("name").strip(), "qty": int(m.group("qty"))})
+        elif any(k in desc for k in RETOUCH_KEYS):
+            retouch.append({"name": m.group("desc").strip(), "qty": qty})
     return retouch, artist_series
 
 
@@ -515,6 +534,7 @@ class OCRExtractor:
                 "Confidence",
                 "Warnings",
             ]
+            fieldnames += ["FrameParsed", "RetouchParsed", "ArtistParsed"]
             with open(qa_log_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
@@ -523,7 +543,7 @@ class OCRExtractor:
                 frames_cherry_total = sum(v.get('cherry', 0) for v in self.frame_counts.values())
                 frames_black_total = sum(v.get('black', 0) for v in self.frame_counts.values())
                 retouch_summary = "; ".join(f"{x['qty']}x {x['name']}" for x in self.retouch_items)
-
+                
                 for row in rows:
                     writer.writerow({
                         "Row": getattr(row, 'row_number', ''),
@@ -535,7 +555,10 @@ class OCRExtractor:
                         "FramesBlack": frames_black_total,
                         "Retouch": retouch_summary,
                         "Confidence": f"{row.confidence:.1f}%",
-                        "Warnings": '; '.join(row.warnings) if row.warnings else ''
+                        "Warnings": '; '.join(row.warnings) if row.warnings else '',
+                        "FrameParsed": json.dumps(self.frame_counts, ensure_ascii=False),
+                        "RetouchParsed": retouch_summary,
+                        "ArtistParsed": "Yes" if self.artist_series else "",
                     })
             
             logger.debug(f"QA log created: {qa_log_path}")
