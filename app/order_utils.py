@@ -79,8 +79,7 @@ def apply_frames_to_items(items: List[Dict], frame_counts: Dict[str, Dict[str, i
         # Skip composites; respect frame_eligible flag (default True for prints).
         if it.get('category') == 'trio_composite':
             continue
-        default_eligible = it.get('category') in {'print', 'sheet'}
-        if not it.get('frame_eligible', default_eligible):
+        if not it.get('frame_eligible', it.get('category') == 'print'):
             continue
         key = it.get('size', '').replace(' ', '')
         pool = frame_counts.get(key)
