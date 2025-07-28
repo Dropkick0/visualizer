@@ -14,14 +14,18 @@ def demo_extraction():
     
     # Extract from screenshot
     print("🔍 Extracting from Test_Full_Screenshot.png...")
-    rows = extractor.extract_rows("Test_Full_Screenshot.png")
-    
+    try:
+        rows = extractor.extract_rows("Test_Full_Screenshot.png")
+    except Exception as e:
+        print(f"❌ OCR extraction failed: {e}")
+        return
+
     if not rows:
         print("❌ No rows extracted")
         return
-    
+
     # Get the raw extracted text
-    row = rows[0]  # First (and likely only) row from column-isolated approach
+    row = rows[0]
     
     print(f"📊 Raw Column Extractions:")
     print(f"   Code Column: '{row.code}'")
