@@ -20,13 +20,15 @@ try:
     WINOCR_AVAILABLE = True
 except ImportError:
     WINOCR_AVAILABLE = False
-    logger.warning("winocr not available - will use fallback OCR")
+    logger.warning("winocr not available")
 
 
 def win_ocr(pil_image):
     """Run Windows OCR and return list of (bbox, text) tuples."""
     if not WINOCR_AVAILABLE:
-        return []
+        raise RuntimeError(
+            "winocr not available; install it or enable Windows OCR."
+        )
     try:
         result = winocr.recognize_pil_sync(pil_image, "en-US")
         lines = []
@@ -448,13 +450,29 @@ class OCRExtractor:
         w, h = img.width, img.height
         boxes = build_row_bboxes(w, h)
         rows: list[RowRecord] = []
+
+        debug_dir = Path("tmp/rows")
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        overlay = img.copy()
+        from PIL import ImageDraw, ImageFont
+        draw = ImageDraw.Draw(overlay)
+
         for idx, (x1, y1, x2, y2) in enumerate(boxes):
             crop = img.crop((x1, y1, x2, y2))
             ocr_lines = win_ocr(crop)
             raw = " ".join(t for (_, t) in sorted(ocr_lines, key=lambda t: t[0][0])).strip()
+            raw = re.sub(r"\s{2,}", " ", raw)
+
+            crop.save(debug_dir / f"row_{idx:02d}.png")
+            with open(debug_dir / f"row_{idx:02d}.txt", "w", encoding="utf-8") as f:
+                f.write(raw or "<EMPTY>")
+
+            draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
+            draw.text((x1 + 2, y1 + 2), f"{idx}", fill="red")
+
             if not raw:
                 continue
-            raw = re.sub(r"\s{2,}", " ", raw)
+
             m = ROW_RE.match(raw)
             if not m:
                 qty, code, desc, imgs = self._loose_parse_row(raw)
@@ -464,16 +482,18 @@ class OCRExtractor:
                 desc = m.group("desc").strip()
                 imgs = (m.group("imgs") or "").strip()
 
-            if not any([qty, code, desc, imgs]):
-                continue
+            if any([qty, code, desc, imgs]):
+                rows.append(
+                    RowRecord(
+                        qty=qty,
+                        code=code,
+                        desc=desc,
+                        imgs=imgs,
+                        y_position=(y1 + y2) / 2,
+                    )
+                )
 
-            rows.append(RowRecord(
-                qty=qty,
-                code=code,
-                desc=desc,
-                imgs=imgs,
-                y_position=(y1 + y2) / 2,
-            ))
+        overlay.save(debug_dir / "rows_overlay.png")
         return rows
 
     def _loose_parse_row(self, text: str) -> tuple[Optional[int], str, str, str]:
@@ -604,7 +624,9 @@ class OCRExtractor:
         """Run Windows OCR on a preprocessed crop"""
 
         if not WINOCR_AVAILABLE:
-            return self._mock_ocr_result(col_name)
+            raise RuntimeError(
+                "winocr not available; install it or enable Windows OCR."
+            )
 
         try:
             from PIL import Image
@@ -627,56 +649,6 @@ class OCRExtractor:
             logger.error(f"Windows OCR failed for {col_name}: {e}")
             return []
 
-    def _mock_ocr_result(self, col_name: str) -> List[OcrLine]:
-        """Mock OCR for development when winocr not available"""
-        # Mock data based on the actual FileMaker screenshot
-        mock_data = {
-            "COL_QTY": ["12", "1", "3", "1", "1", "3", "1", "1", "1"],
-            "COL_CODE": [
-                "200",
-                "570",
-                "350",
-                "810",
-                "1020.5",
-                "510.3",
-                "1013",
-                "1620",
-                "2024",
-            ],
-            "COL_DESC": [
-                "sheet of 8 wallets",
-                "pair 5x7 BASIC",
-                '3.5" x 5" BASIC 1 sheet of 4',
-                "8x10 BASIC",
-                "10x20 TRIO PORTRAIT black digital mat, cherry frame",
-                "5x10 triple opening with BLACK digital mat and cherry frame",
-                "10x13 BASIC",
-                "16x20 BASIC",
-                "20x24 BASIC",
-            ],
-            "COL_IMG": [
-                "0033",
-                "0033",
-                "0033",
-                "0033",
-                "0033, 0044, 0039",
-                "0039, 0033, 0044",
-                "0102",
-                "0033",
-                "0102",
-            ],
-        }
-
-        lines: List[OcrLine] = []
-        if col_name in mock_data:
-            for i, text in enumerate(mock_data[col_name]):
-                y_top = i * 35 + 420
-                y_bot = y_top + 30
-                lines.append(
-                    OcrLine(top=y_top, bottom=y_bot, mid=(y_top + y_bot) / 2, text=text)
-                )
-
-        return lines
 
     def _reconstruct_with_anchor(
         self, cols: Dict[str, List[OcrLine]], qty_rows: List[OcrLine]
