@@ -541,9 +541,6 @@ class EnhancedPortraitPreviewGenerator:
                 continue
                 
             group_items = groups[group_name]
-            if group_name == 'large_print':
-                from .order_from_tsv import sort_large_print
-                group_items = sort_large_print(group_items)
             if not group_items:
                 continue
             
@@ -926,9 +923,6 @@ class EnhancedPortraitPreviewGenerator:
                     groups[group_key].append(processed_item)
         
         final_groups = {k: v for k, v in groups.items() if v}
-        if 'large_print' in final_groups:
-            from .order_from_tsv import sort_large_print
-            final_groups['large_print'] = sort_large_print(final_groups['large_print'])
         logger.info(f"�� Final groups: {[(k, len(v)) for k, v in final_groups.items()]}")
         return final_groups
 
