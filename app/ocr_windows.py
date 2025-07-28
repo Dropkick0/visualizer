@@ -18,7 +18,7 @@ try:
     WINOCR_AVAILABLE = True
 except ImportError:
     WINOCR_AVAILABLE = False
-    logger.warning("winocr not available - falling back to mock OCR for development")
+    logger.warning("winocr not available")
 
 from .errors import OCRError
 from .config import AppConfig
@@ -48,7 +48,7 @@ class WindowsOCR:
         self.language = "en-US"  # Default to English, could be configurable
         
         if not WINOCR_AVAILABLE:
-            logger.warning("Windows OCR not available - using mock implementation")
+            logger.warning("Windows OCR not available")
         
         logger.info(f"Windows OCR initialized for language: {self.language}")
     
@@ -266,8 +266,9 @@ class WindowsOCR:
         """
         try:
             if not WINOCR_AVAILABLE:
-                # Mock implementation for development/testing
-                return self._mock_ocr_result(work_dir)
+                raise OCRError(
+                    "winocr not available; install it or enable Windows OCR."
+                )
             
             # Convert OpenCV image to PIL for Windows OCR
             if len(image.shape) == 3:
@@ -345,45 +346,6 @@ class WindowsOCR:
         except Exception as e:
             raise OCRError(f"Windows OCR failed: {e}")
     
-    def _mock_ocr_result(self, work_dir: Path) -> OCRResult:
-        """Mock OCR result for development when Windows OCR not available"""
-        raw_text = "2 8x10 Basic Print Digital                    1234, 5678\n1 5x7 Cherry Wallet                          9876"
-        lines = [
-            "2 8x10 Basic Print Digital                    1234, 5678",
-            "1 5x7 Cherry Wallet                          9876"
-        ]
-        words = [
-            OCRWord("2", 85.0, (10, 10, 20, 15)),
-            OCRWord("8x10", 90.0, (35, 10, 40, 15)),
-            OCRWord("Basic", 88.0, (80, 10, 45, 15)),
-            OCRWord("Print", 92.0, (130, 10, 35, 15)),
-            OCRWord("Digital", 89.0, (170, 10, 50, 15)),
-            OCRWord("1234,", 87.0, (250, 10, 40, 15)),
-            OCRWord("5678", 91.0, (295, 10, 35, 15)),
-            OCRWord("1", 93.0, (10, 30, 15, 15)),
-            OCRWord("5x7", 88.0, (30, 30, 30, 15)),
-            OCRWord("Cherry", 90.0, (65, 30, 45, 15)),
-            OCRWord("Wallet", 86.0, (115, 30, 45, 15)),
-            OCRWord("9876", 92.0, (200, 30, 35, 15))
-        ]
-        
-        # Save mock OCR outputs
-        with open(work_dir / "ocr_raw_text.txt", 'w', encoding='utf-8') as f:
-            f.write(raw_text)
-        
-        with open(work_dir / "ocr_lines.txt", 'w', encoding='utf-8') as f:
-            for line in lines:
-                f.write(f"{line}\n")
-        
-        logger.info("Using mock OCR result for development")
-        
-        return OCRResult(
-            raw_text=raw_text,
-            lines=lines,
-            words=words,
-            confidence_avg=89.0,
-            roi_bbox=None
-        )
     
     def test_windows_ocr_installation(self) -> bool:
         """Test if Windows OCR is available and working"""
