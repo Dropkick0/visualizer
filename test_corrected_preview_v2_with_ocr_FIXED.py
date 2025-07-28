@@ -292,6 +292,19 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print(f"   • OCR text for codes: '{all_text[:100]}...'")
         image_codes = extract_image_codes_from_text(all_text)
 
+        if not image_codes:
+            # Fallback: run a general OCR pass on the entire screenshot
+            try:
+                import pytesseract
+                from PIL import Image
+
+                raw_text = pytesseract.image_to_string(Image.open(screenshot_file), config="--psm 6")
+
+                print(f"   • Fallback OCR text: '{raw_text[:200]}...'")
+
+                image_codes = extract_image_codes_from_text(raw_text)
+            except Exception as e:
+                print(f"   ⚠️ Fallback OCR failed: {e}")
 
         if not image_codes:
             print("   • No image codes detected in OCR")

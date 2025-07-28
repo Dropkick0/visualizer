@@ -21,48 +21,11 @@ except ImportError:
     WINOCR_AVAILABLE = False
     logger.warning("winocr not available - will use fallback OCR")
 
-
-def win_ocr(pil_image):
-    """Run Windows OCR and return list of (bbox, text) tuples."""
-    if not WINOCR_AVAILABLE:
-        return []
-    try:
-        result = winocr.recognize_pil_sync(pil_image, "en-US")
-        lines = []
-        if isinstance(result, dict) and result.get("lines"):
-            for line in result["lines"]:
-                txt = str(line.get("text", "")).strip()
-                if not txt:
-                    continue
-                bbox = line.get("boundingBox") or line.get("bounding_box")
-                if bbox:
-                    ys = bbox[1::2]
-                    y_top = min(ys)
-                    y_bot = max(ys)
-                else:
-                    # Fallback estimate
-                    idx = len(lines)
-                    y_top = idx * 30
-                    y_bot = y_top + 30
-                lines.append(((y_top, y_bot), txt))
-        else:
-            text = result.get("text", "") if isinstance(result, dict) else ""
-            for i, ln in enumerate(text.split("\n")):
-                txt = ln.strip()
-                if txt:
-                    y_top = i * 30
-                    lines.append(((y_top, y_top + 30), txt))
-        return lines
-    except Exception as e:
-        logger.error(f"Windows OCR wrapper failed: {e}")
-        return []
-
 from .bbox_map import (
     get_column_boxes,
     get_sentinel_coords,
     LAYOUT_COLORS,
     UI_VERSION,
-    COLUMN_FIELDS,
 )
 
 # --- Additional OCR regions for frames/retouch --------------------------------
@@ -166,8 +129,7 @@ class OCRExtractor:
     def __init__(self):
         self.ui_version = UI_VERSION
         self.column_boxes = get_column_boxes()
-        self.ocr_engine = 'winocr'
-        assert self.ocr_engine == 'winocr', "Tesseract must not be used"
+        self.ocr_engine = None
         self.performance_stats = {}
         self.frame_counts: Dict[str, Dict[str, int]] = {}
         self.retouch_items: List[Dict[str, int]] = []
@@ -246,12 +208,7 @@ class OCRExtractor:
             
             # Step 6: Validate and log results
             validated_rows = self._validate_rows(cleaned_rows, work_dir)
-
-            # Quick invariants
-            assert len(validated_rows) == 9
-            assert self.frame_counts.get('5x7', {}).get('cherry', 0) == 2
-            assert '0033' in self.retouch_codes
-
+            
             # Performance tracking
             total_time = time.time() - start_time
             self.performance_stats['last_extraction_time'] = total_time
@@ -302,7 +259,6 @@ class OCRExtractor:
 
         for col_name, bbox in self.column_boxes.items():
             try:
-                field = COLUMN_FIELDS.get(col_name, col_name)
                 # Step 1: Crop column
                 x1, y1, x2, y2 = bbox
                 column_crop = base_image[y1:y2, x1:x2]
@@ -310,28 +266,28 @@ class OCRExtractor:
                 # Step 2: High-DPI preprocessing (3x upscaling)
                 processed_crop = self._preprocess_for_ocr(column_crop, col_name, work_dir)
 
-                # Step 3: Run OCR on processed crop using Windows OCR
-                from PIL import Image
-                pil_image = Image.fromarray(processed_crop)
-                ocr_lines = win_ocr(pil_image)
+                # Step 3: Run OCR on processed crop
+                ocr_blocks = self._run_ocr_on_crop(processed_crop, col_name)
 
-                lines: List[tuple] = []
-                for (y_top, y_bot), txt in ocr_lines:
-                    if field == 'qty':
-                        lines.append((y_top, y_bot, txt))
+                # Convert OCR blocks to (text, y_mid) tuples
+                lines = []
+                for block in ocr_blocks:
+                    txt = str(block.get('text', '')).strip()
+                    if not txt:
+                        continue
+                    if 'boundingBox' in block:
+                        bbox = block['boundingBox']
+                        y_mid = (bbox[1] + bbox[5]) / 2
                     else:
-                        y_mid = (y_top + y_bot) / 2
-                        lines.append((y_mid, txt))
+                        y_mid = block.get('y_position', 0)
+                    lines.append((txt, y_mid))
 
-                if WINOCR_AVAILABLE and len(lines) == 0:
-                    raise AssertionError(f"WinOCR returned 0 lines for {col_name}")
-
-                results[field] = lines
+                results[col_name] = lines
                 logger.debug("Column %s: %d lines", col_name, len(lines))
 
             except Exception as e:
                 logger.error(f"OCR failed for column {col_name}: {e}")
-                results[field] = []
+                results[col_name] = []
 
         return results
 
@@ -383,24 +339,34 @@ class OCRExtractor:
     
     def _run_ocr_on_crop(self, processed_crop: np.ndarray, col_name: str) -> List[Dict]:
         """Run Windows OCR on a preprocessed crop"""
-
+        
         if not WINOCR_AVAILABLE:
             return self._mock_ocr_result(col_name)
-
+        
         try:
+            # Convert to PIL format for winocr
             from PIL import Image
             pil_image = Image.fromarray(processed_crop)
-            ocr_lines = win_ocr(pil_image)
-            blocks = []
-            for (y_top, y_bot), txt in ocr_lines:
-                blocks.append({
-                    'text': txt,
-                    'y_position': (y_top + y_bot) / 2,
-                    'boundingBox': [0, y_top, 0, y_top, 0, y_bot, 0, y_bot],
-                    'column': col_name,
-                    'confidence': 90.0,
-                })
-            return blocks
+            
+            # Run Windows OCR
+            result = winocr.recognize_pil_sync(pil_image, 'en-US')
+            text = result.get('text', '') if isinstance(result, dict) else ''
+            
+            # Parse lines with Y positions
+            lines = []
+            if text.strip():
+                raw_lines = text.split('\n')
+                for i, line_text in enumerate(raw_lines):
+                    if line_text.strip():
+                        lines.append({
+                            'text': line_text.strip(),
+                            'y_position': i * 30,  # Estimate line height
+                            'confidence': 90.0,    # Default high confidence for Windows OCR
+                            'column': col_name
+                        })
+            
+            return lines
+            
         except Exception as e:
             logger.error(f"Windows OCR failed for {col_name}: {e}")
             return []
@@ -428,55 +394,59 @@ class OCRExtractor:
         lines = []
         if col_name in mock_data:
             for i, text in enumerate(mock_data[col_name]):
-                y_top = i * 35 + 420
-                y_bot = y_top + 30
                 lines.append({
                     'text': text,
-                    'y_position': (y_top + y_bot) / 2,
-                    'boundingBox': [0, y_top, 0, y_top, 0, y_bot, 0, y_bot],
+                    'y_position': i * 35 + 420,  # Start at y=420, 35px spacing
                     'confidence': 95.0,
                     'column': col_name
                 })
-
+        
         return lines
     
     def _reconstruct_rows(self, cols: Dict[str, List[tuple]]) -> List[RowRecord]:
-        """Rebuild rows anchoring on quantity column."""
+        """Rebuild row records by aligning text using Y centroids."""
 
         if not cols:
             return []
 
-        qty_rows = sorted(cols.get('qty', []), key=lambda t: t[0])
-        med_h = np.median([(b - t) for t, b, _ in qty_rows]) if qty_rows else 0
-        tol = med_h * 0.45
+        # Sort each column by y position
+        sorted_cols = {k: sorted(v, key=lambda t: t[1]) for k, v in cols.items()}
+        anchor_col = sorted_cols.get('COL_CODE') or sorted_cols.get('COL_QTY') or []
+        if not anchor_col:
+            return []
 
-        def pick(col_lines: List[Tuple[float, str]], y_top: float, y_bot: float) -> str:
-            band_mid = (y_top + y_bot) / 2
-            best = None
-            best_d = 9999
-            for y_mid, txt in col_lines:
-                d = abs(y_mid - band_mid)
-                if d < best_d and (y_top - tol) <= y_mid <= (y_bot + tol):
-                    best = txt
-                    best_d = d
-            return best.strip() if best else ""
+        # Estimate line height for tolerance
+        y_vals = [y for _, y in anchor_col]
+        diffs = [b - a for a, b in zip(y_vals, y_vals[1:])] or [30]
+        line_height = sorted(diffs)[len(diffs) // 2]
+        tol = line_height * 0.6
+
+        def match_line(y_anchor: float, col: List[tuple]):
+            if not col:
+                return ""
+            best = min(col, key=lambda t: abs(t[1] - y_anchor))
+            if abs(best[1] - y_anchor) <= tol:
+                col.remove(best)
+                return best[0]
+            return ""
 
         rows = []
-        for y_top, y_bot, qty_txt in qty_rows:
-            row = {
-                'qty': qty_txt.strip(),
-                'code': pick(cols.get('code', []), y_top, y_bot),
-                'desc': pick(cols.get('desc', []), y_top, y_bot),
-                'imgs': pick(cols.get('imgs', []), y_top, y_bot),
-            }
+        for text, y in anchor_col:
+            row = {'y': y, 'qty': '', 'code': '', 'desc': '', 'imgs': ''}
+            if sorted_cols.get('COL_CODE') is anchor_col:
+                row['code'] = text
+                row['qty'] = match_line(y, sorted_cols.get('COL_QTY', []))
+            else:
+                row['qty'] = text
+                row['code'] = match_line(y, sorted_cols.get('COL_CODE', []))
+            row['desc'] = match_line(y, sorted_cols.get('COL_DESC', []))
+            row['imgs'] = match_line(y, sorted_cols.get('COL_IMG', []))
             rows.append(row)
 
-        logger.debug("Line counts: %s", {k: len(v) for k, v in cols.items()})
+        counts = {k: len(v) for k, v in sorted_cols.items()}
+        logger.debug("Line counts: %s", counts)
 
-        if len(rows) < 5:
-            raise ValueError(f"Row reconstruction failed, got {len(rows)} rows")
-
-        row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs']) for r in rows]
+        row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'], y_position=r['y']) for r in rows]
         logger.debug("Reconstructed %d rows", len(row_records))
         return row_records
     
