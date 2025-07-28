@@ -1,3 +1,7 @@
+from pathlib import Path
+
+import pytest
+
 from app.order_utils import expand_row_to_items, apply_frames_to_items
 
 EXPECTED = {
@@ -38,6 +42,14 @@ EXPECTED_COMPOSITES = {
     '5x10 Trio #2': ['0039', '0033', '0044'],
     '5x10 Trio #3': ['0039', '0033', '0044'],
 }
+
+
+def test_row_extraction_count():
+    pytest.importorskip("cv2")
+    from app.ocr_extractor import OCRExtractor
+    extractor = OCRExtractor()
+    rows = extractor.extract_rows(Path("Test_Full_Screenshot.png"))
+    assert len(rows) == 9
 
 # Sample rows based on OCR extraction
 ROWS = [
