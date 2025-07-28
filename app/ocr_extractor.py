@@ -76,11 +76,11 @@ RETOUCH_BOX = (1250, 250, 1370, 380)
 
 # ---- Tunable row grid constants ----
 ROW_COUNT_DEFAULT = 18
-ORDER_ROI_TOP = 460
-ORDER_ROI_BOTTOM = 900
-ORDER_ROI_LEFT = 120
-ORDER_ROI_RIGHT = 1380
-ROW_EXTRA_PAD = 6
+ORDER_ROI_TOP = 485
+ORDER_ROI_BOTTOM = 891
+ORDER_ROI_LEFT = 31
+ORDER_ROI_RIGHT = 950
+ROW_EXTRA_PAD = 0
 # row_index -> (dy_top, dy_bot)
 ROW_MANUAL_OFFSETS: dict[int, tuple[int, int]] = {}
 
