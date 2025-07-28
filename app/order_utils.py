@@ -58,6 +58,11 @@ def expand_row_to_items(row: Dict, product_specs: Dict[str, Dict] = PRODUCT_SPEC
     code = row.get('code')
     spec = product_specs.get(code, {})
     items: List[Dict] = []
+    if not imgs:
+        # Skip items with no images; attach warning if row is a RowRecord-like
+        if isinstance(row.get('warnings'), list):
+            row['warnings'].append("No image codes for row; skipping item")
+        return items
     for _ in range(qty):
         item = {
             'product_code': code,
