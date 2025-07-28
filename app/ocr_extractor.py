@@ -73,43 +73,50 @@ FRAMES_TABLE = (953, 593, 1385, 700)
 RETOUCH_BOX = (1250, 250, 1370, 380)
 
 # ---- Tunable row grid constants ----
-ROW_COUNT_DEFAULT = 18          # how many visible rows you expect
-ORDER_ROI_TOP = 460             # Y start of table (pixels in the screenshot)
-ORDER_ROI_BOTTOM = 900          # Y end  (or negative offset from bottom)
-ROW_EXTRA_PAD = 6               # a few pixels of slack above/below each row
-# Per-row manual nudges: row_index -> (dy_top, dy_bot)
+ROW_COUNT_DEFAULT = 18
+ORDER_ROI_TOP     = 460
+ORDER_ROI_BOTTOM  = 900
+ORDER_ROI_LEFT    = 120
+ORDER_ROI_RIGHT   = 1380
+ROW_EXTRA_PAD     = 6
+# row_index -> (dy_top, dy_bot)
 ROW_MANUAL_OFFSETS: dict[int, tuple[int, int]] = {}
 
 # Optional: allow overriding from env for quick tweaking
 import os
 ROW_COUNT_DEFAULT = int(os.getenv("OCR_ROW_COUNT", ROW_COUNT_DEFAULT))
-ORDER_ROI_TOP = int(os.getenv("OCR_ROI_TOP", ORDER_ROI_TOP))
-ORDER_ROI_BOTTOM = int(os.getenv("OCR_ROI_BOTTOM", ORDER_ROI_BOTTOM))
-ROW_EXTRA_PAD = int(os.getenv("OCR_ROW_PAD", ROW_EXTRA_PAD))
+ORDER_ROI_TOP     = int(os.getenv("OCR_ROI_TOP", ORDER_ROI_TOP))
+ORDER_ROI_BOTTOM  = int(os.getenv("OCR_ROI_BOTTOM", ORDER_ROI_BOTTOM))
+ORDER_ROI_LEFT    = int(os.getenv("OCR_ROI_LEFT", ORDER_ROI_LEFT))
+ORDER_ROI_RIGHT   = int(os.getenv("OCR_ROI_RIGHT", ORDER_ROI_RIGHT))
+ROW_EXTRA_PAD     = int(os.getenv("OCR_ROW_PAD", ROW_EXTRA_PAD))
 
 
-def build_row_bboxes(img_h: int) -> List[Tuple[int, int, Optional[int], int]]:
-    """Build bounding boxes for each physical row in the order table."""
-    top = ORDER_ROI_TOP
+def build_row_bboxes(img_w: int, img_h: int) -> List[tuple[int, int, int, int]]:
+    """Return list of (x1,y1,x2,y2) for each table row band."""
+    top    = ORDER_ROI_TOP
     bottom = ORDER_ROI_BOTTOM if ORDER_ROI_BOTTOM > 0 else img_h + ORDER_ROI_BOTTOM
+    x1     = ORDER_ROI_LEFT
+    x2     = ORDER_ROI_RIGHT if ORDER_ROI_RIGHT > 0 else img_w + ORDER_ROI_RIGHT
     total_h = bottom - top
-    row_h = total_h / ROW_COUNT_DEFAULT
-    bboxes = []
+    row_h   = total_h / ROW_COUNT_DEFAULT
+    out = []
     for i in range(ROW_COUNT_DEFAULT):
         y1 = int(top + i * row_h)
         y2 = int(top + (i + 1) * row_h)
-        dy_top, dy_bot = ROW_MANUAL_OFFSETS.get(i, (0, 0))
-        y1 = max(0, y1 + dy_top - ROW_EXTRA_PAD)
-        y2 = min(img_h, y2 + dy_bot + ROW_EXTRA_PAD)
-        bboxes.append((0, y1, None, y2))
-    return bboxes
+        dy_t, dy_b = ROW_MANUAL_OFFSETS.get(i, (0, 0))
+        y1 = max(0, y1 + dy_t - ROW_EXTRA_PAD)
+        y2 = min(img_h, y2 + dy_b + ROW_EXTRA_PAD)
+        out.append((x1, y1, x2, y2))
+    return out
 
 
 # Regular expression patterns for parsing the extra tables
 # FRAMES table contains quantity, frame number and a free form description that
 # includes the size and color.  The OCR noise can vary, so we first capture the
 # three main columns then search the description for the size/color keywords.
-FRAME_ROW = re.compile(r"^(?P<qty>\d+)\s+\S+\s+(?P<desc>.+)$", re.I)
+FRAME_ROW = re.compile(r"^(?P<qty>\d+)\s+.+$", re.I)
+FRAME_FUZZY = re.compile(r"(?P<qty>\d+).+?(?P<size>\d+\s*x\s*\d+).+?(?P<color>cherry|black|blk)", re.I)
 SIZE_RE = re.compile(r"(\d+\s*x\s*\d+)", re.I)
 COLOR_RE = re.compile(r"\b(cherry|chetry|black|blk)\b", re.I)
 
@@ -150,38 +157,31 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
     for ln in lines:
         m = FRAME_ROW.search(ln)
         if not m:
-            continue
-        qty = int(m.group("qty"))
-        desc = m.group("desc")
-        desc_lower = desc.lower()
-        size_m = SIZE_RE.search(desc)
-        color_m = COLOR_RE.search(desc)
-        if not size_m:
-            size_value = next(
-                (
-                    kw
-                    for kw in [
-                        "5x7",
-                        "8x10",
-                        "10x20",
-                        "5x10",
-                        "10x13",
-                        "16x20",
-                        "20x24",
-                    ]
-                    if kw in desc_lower
-                ),
-                None,
-            )
+            fm = FRAME_FUZZY.search(ln)
+            if not fm:
+                continue
+            qty = int(fm.group("qty"))
+            size_value = fm.group("size")
+            color_value = fm.group("color")
+            desc = ln
+            desc_lower = desc.lower()
         else:
-            size_value = size_m.group(1)
-
-        if not color_m:
-            color_value = next(
-                (kw for kw in ["cherry", "black", "white"] if kw in desc_lower), None
-            )
-        else:
-            color_value = color_m.group(1)
+            qty = int(m.group("qty"))
+            desc = m.group("desc")
+            desc_lower = desc.lower()
+            size_m = SIZE_RE.search(desc)
+            color_m = COLOR_RE.search(desc)
+            if size_m:
+                size_value = size_m.group(1)
+            else:
+                size_value = next(
+                    (kw for kw in ["5x7", "8x10", "10x20", "5x10", "10x13", "16x20", "20x24"] if kw in desc_lower),
+                    None,
+                )
+            if color_m:
+                color_value = color_m.group(1)
+            else:
+                color_value = next((kw for kw in ["cherry", "black", "white"] if kw in desc_lower), None)
         if not size_value or not color_value:
             continue
         size = size_value.replace(" ", "")
@@ -354,8 +354,7 @@ class OCRExtractor:
                 rows = self._ocr_rows_full_line(pil_img)
                 ocr_results = None
             else:
-                # (kept for dev/testing, but shouldn't run in prod)
-                ocr_results = self._run_column_isolated_ocr(base_image, work_dir)
+                raise AssertionError("Column mode disabled in production")
 
             # Additional ROIs for frames and retouch sections
             self.frames_lines = self._ocr_roi(
@@ -433,31 +432,59 @@ class OCRExtractor:
             return False
 
     def _ocr_rows_full_line(self, img) -> List[RowRecord]:
-        """OCR the order table by scanning each physical row as a single line."""
-        h = img.height
-        boxes = build_row_bboxes(h)
-        rows: List[RowRecord] = []
+        """Scan each visual row band once; parse into qty/code/desc/imgs."""
+        w, h = img.width, img.height
+        boxes = build_row_bboxes(w, h)
+        rows: list[RowRecord] = []
         for idx, (x1, y1, x2, y2) in enumerate(boxes):
-            crop = img.crop((x1, y1, x2 or img.width, y2))
+            crop = img.crop((x1, y1, x2, y2))
             ocr_lines = win_ocr(crop)
-            # Concatenate lines in reading order
-            text = " ".join(txt for (_, txt) in sorted(ocr_lines, key=lambda t: t[0][0])).strip()
-            if not text:
+            raw = " ".join(t for (_, t) in sorted(ocr_lines, key=lambda t: t[0][0])).strip()
+            if not raw:
                 continue
-            m = ROW_RE.match(text)
+            raw = re.sub(r"\s{2,}", " ", raw)
+            m = ROW_RE.match(raw)
             if not m:
-                logger.debug(f"Row {idx} unparsable: {text!r}")
+                qty, code, desc, imgs = self._loose_parse_row(raw)
+            else:
+                qty  = m.group("qty")
+                code = m.group("code")
+                desc = m.group("desc").strip()
+                imgs = (m.group("imgs") or "").strip()
+
+            if not any([qty, code, desc, imgs]):
                 continue
-            rows.append(
-                RowRecord(
-                    qty=m.group("qty"),
-                    code=m.group("code"),
-                    desc=m.group("desc").strip(),
-                    imgs=m.group("imgs") or "",
-                    y_position=(y1 + y2) / 2,
-                )
-            )
+
+            rows.append(RowRecord(
+                qty=qty, code=code, desc=desc, imgs=imgs,
+                y_position=(y1+y2)/2
+            ))
         return rows
+
+    def _loose_parse_row(self, text: str) -> tuple[Optional[int], str, str, str]:
+        """Fallback parser for ugly OCR rows."""
+        tokens = text.split()
+        qty = None
+        for tok in tokens:
+            if tok.isdigit() and int(tok) <= 30:
+                qty = int(tok)
+                break
+        code = ""
+        for tok in tokens:
+            if re.match(r"^\d{3,4}(?:\.\d+)?$", tok):
+                code = tok
+                break
+        imgs_found = re.findall(r"\b\d{3,4}\b", text)
+        imgs = ", ".join(imgs_found) if imgs_found else ""
+        desc = text
+        if code:
+            start = text.find(code) + len(code)
+            if imgs_found:
+                end = text.rfind(imgs_found[0])
+                desc = text[start:end].strip()
+            else:
+                desc = text[start:].strip()
+        return qty, code, desc, imgs
 
     def _run_column_isolated_ocr(
         self, base_image: np.ndarray, work_dir: Path
@@ -796,12 +823,11 @@ class OCRExtractor:
         return text
 
     def _fix_imgs(self, text: str) -> str:
-        """Fix image codes - extract 4-digit comma-delimited sequences"""
+        """Fix image codes - extract 3-4 digit comma-delimited sequences"""
         if not text:
             return ""
 
-        # Extract all 4-digit codes preserving OCR order
-        codes = re.findall(r"\b\d{4}\b", str(text))
+        codes = re.findall(r"\b\d{3,4}\b", str(text))
         return ", ".join(codes)
 
     def _validate_rows(self, rows: List[RowRecord], work_dir: Path) -> List[RowRecord]:
