@@ -1,7 +1,9 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import List, Optional, Dict
 import csv
 import re
+import json
+from pathlib import Path
 
 @dataclass
 class Row:
@@ -42,14 +44,22 @@ def _split_imgs(val: str) -> List[str]:
 
 
 def parse_fm_dump(tsv_path: str) -> ParsedOrder:
-    with open(tsv_path, newline='', encoding='utf-8') as f:
+    with open(tsv_path, newline='', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f, delimiter='\t')
         rows = list(reader)
 
     by_label = {r['Label']: r['Value'] for r in rows if r.get('Label')}
 
     # retouch images
-    retouch_images = [by_label.get(f'ReTOUCH Img #{i}', by_label.get(f'RETOUCH Img #{i}', '')).strip() for i in range(1,9)]
+    retouch_images = []
+    for i in range(1, 9):
+        for key in (f'RETOUCH Img #{i}', f'Retouch Img #{i}', f'ReTOUCH Img #{i}'):
+            val = by_label.get(key)
+            if val is not None:
+                val = val.strip()
+                if val:
+                    retouch_images.append(val)
+                break
     retouch_images = [v for v in retouch_images if v]
 
     frames: List[Frame] = []
@@ -82,4 +92,11 @@ def parse_fm_dump(tsv_path: str) -> ParsedOrder:
         directory_pose_image=by_label.get('Directory Pose Image #', '').strip() or None,
         artist_series_flags=artist_flags
     )
+    try:
+        tmp = Path('tmp')
+        tmp.mkdir(exist_ok=True)
+        with open(tmp / 'fm_dump_parsed.json', 'w', encoding='utf-8') as jf:
+            json.dump(asdict(parsed), jf, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
     return parsed
