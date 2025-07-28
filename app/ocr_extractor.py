@@ -467,6 +467,10 @@ class OCRExtractor:
             row['imgs'] = match_line(y, sorted_cols.get('COL_IMG', []))
             rows.append(row)
 
+        counts = {k: len(v) for k, v in sorted_cols.items()}
+        logger.debug("Line counts: {}", counts)
+
+
         row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'], y_position=r['y']) for r in rows]
         logger.debug("Reconstructed {} rows", len(row_records))
         return row_records
