@@ -12,10 +12,7 @@ from app.fm_dump_parser import parse_fm_dump
 from app.config import load_product_config, load_config
 from app.image_search import create_image_searcher
 from app.enhanced_preview import EnhancedPortraitPreviewGenerator
-from test_corrected_preview_v2_with_ocr_FIXED import (
-    map_product_codes_to_items,
-    determine_frame_requirements_from_items,
-)
+from app.order_from_tsv import rows_to_order_items
 
 
 def run_preview(tsv_path: str = "fm_dump.tsv") -> bool:
@@ -26,12 +23,10 @@ def run_preview(tsv_path: str = "fm_dump.tsv") -> bool:
     rows = parsed.rows
     print(f"✅ Loaded {len(rows)} rows from TSV")
 
-    product_codes = [r.code for r in rows if r.code]
     image_codes = [c for r in rows for c in r.imgs]
-    all_desc = " ".join(r.desc or "" for r in rows)
 
-    print("\n🔄 Step 2: Map TSV rows with existing product mapping")
-    order_items = map_product_codes_to_items(product_codes, image_codes, all_desc)
+    print("\n🔄 Step 2: Map TSV rows to order items")
+    order_items = rows_to_order_items(rows, parsed.frames, products_cfg["products_by_code"], parsed.retouch_images)
     print(f"✅ Created {len(order_items)} order items")
 
     cfg = load_config()
@@ -49,7 +44,7 @@ def run_preview(tsv_path: str = "fm_dump.tsv") -> bool:
     else:
         print("⚠️ No image searcher – previews will be blank.")
 
-    frame_requirements = determine_frame_requirements_from_items(order_items)
+    frame_requirements = {}
 
     outdir = Path("app/static/previews")
     outdir.mkdir(parents=True, exist_ok=True)
