@@ -20,10 +20,16 @@ EXPECTED = {
     '0039': {'retouch': False, 'artist': False},
 }
 
-EXPECTED_FRAMES = {
-    '5x7': {'Cherry': 2},
-    '8x10': {'Black': 2},
-    '10x13': {'Black': 1},
+EXPECTED_FRAMES_START = {
+    '5x7': {'cherry': 2},
+    '8x10': {'black': 2},
+    '10x13': {'black': 1},
+}
+
+EXPECTED_FRAMES_LEFT = {
+    '5x7': {'cherry': 0},
+    '8x10': {'black': 1},
+    '10x13': {'black': 0},
 }
 
 EXPECTED_COMPOSITES = {
@@ -77,14 +83,24 @@ def test_mapping():
         items.extend(expand_row_to_items(row))
     items.extend(COMPOSITES)
 
+    import copy
+    start = copy.deepcopy(FRAME_COUNTS)
     apply_frames_to_items(items, FRAME_COUNTS)
+    assert start == EXPECTED_FRAMES_START
 
     for it in items:
         codes = set(it['images'])
         it['artist_series'] = bool(codes & ARTIST_CODES)
         it['retouch'] = bool(codes & RETOUCH_CODES)
+        if it.get('category') == 'trio_composite':
+            it['artist_series'] = False
+            it['retouch'] = False
 
     got = count_items_by_image(items)
+    # ensure certain images only appear in trios
+    for leak_code in ('0039', '0044'):
+        for name in got.get(leak_code, {}):
+            assert 'Trio' in name, f"{leak_code} used in single item {name}"
     for code, spec in EXPECTED.items():
         for prod, qty in spec.items():
             if prod in ('retouch', 'artist'):
@@ -94,18 +110,17 @@ def test_mapping():
     # check retouch and artist flags
     for it in items:
         codes = set(it['images'])
-        if codes & {'0033'}:
+        if it.get('category') == 'trio_composite':
+            assert not it.get('retouch', False)
+            assert not it.get('artist_series', False)
+        elif codes & {'0033'}:
             assert it['retouch'] is True
             assert it['artist_series'] is True
         else:
             assert not it.get('retouch', False)
             assert not it.get('artist_series', False)
 
-    assert FRAME_COUNTS == {
-        '5x7': {'cherry': 2},
-        '8x10': {'black': 1},
-        '10x13': {'black': 0},
-    }
+    assert FRAME_COUNTS == EXPECTED_FRAMES_LEFT
 
     for comp in COMPOSITES:
         name = comp['product_name']
