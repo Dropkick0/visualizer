@@ -300,7 +300,7 @@ class OCRExtractor:
                     lines.append((txt, y_mid))
 
                 results[col_name] = lines
-                logger.debug("Column {}: {} lines", col_name, len(lines))
+                logger.debug("Column %s: %d lines", col_name, len(lines))
 
             except Exception as e:
                 logger.error(f"OCR failed for column {col_name}: {e}")
@@ -432,9 +432,6 @@ class OCRExtractor:
         for k, v in sorted_cols.items():
             sorted_cols[k] = [t for t in v if not header_re.search(str(t[0]))]
 
-        counts = {k: len(v) for k, v in sorted_cols.items()}
-        logger.debug("Line counts: {}", counts)
-
         anchor_col = sorted_cols.get('COL_CODE', [])
         if not anchor_col:
             return []
@@ -470,9 +467,8 @@ class OCRExtractor:
         counts = {k: len(v) for k, v in sorted_cols.items()}
         logger.debug("Line counts: {}", counts)
 
-
         row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'], y_position=r['y']) for r in rows]
-        logger.debug("Reconstructed {} rows", len(row_records))
+        logger.debug("Reconstructed %d rows", len(row_records))
         return row_records
     
     def _clean_rows(self, rows: List[RowRecord]) -> List[RowRecord]:
