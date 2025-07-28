@@ -68,21 +68,12 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
             continue
         qty = int(m.group("qty"))
         desc = m.group("desc")
-
-        # Try explicit "8 x 10 black frame" style first
-        m2 = re.search(r"(\d+\s*x\s*\d+)\s+(black|cherry)\s+frame", desc, re.I)
-        if m2:
-            size = m2.group(1)
-            color = m2.group(2).lower()
-        else:
-            size_m = SIZE_RE.search(desc)
-            color_m = COLOR_RE.search(desc)
-            if not size_m or not color_m:
-                continue
-            size = size_m.group(1)
-            color = color_m.group(1).lower()
-
-        size = size.replace(" ", "")
+        size_m = SIZE_RE.search(desc)
+        color_m = COLOR_RE.search(desc)
+        if not size_m or not color_m:
+            continue
+        size = size_m.group(1).replace(" ", "")
+        color = color_m.group(1).lower()
         for pat, repl in SIZE_FIXES.items():
             size = re.sub(pat, repl, size, flags=re.I)
         color = COLOR_FIXES.get(color, color)
@@ -94,12 +85,9 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
 def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str], Set[str]]:
     """Parse retouch entries and detect Artist Series with image codes."""
     retouch: List[Dict[str, int]] = []
+    artist_series = False
     retouch_codes: Set[str] = set()
     artist_codes: Set[str] = set()
-
-    roi_text = " ".join(lines).lower()
-    artist_series = "artist brush" in roi_text or "artist series" in roi_text
-
     for ln in lines:
         m = OPTION_ROW.search(ln)
         if not m:
@@ -109,14 +97,13 @@ def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str
             continue
         desc = m.group("desc")
         desc_lower = desc.lower()
-        codes = re.findall(r"\b00\d{2}\b", desc)
-
-        if "artist" in desc_lower:
+        codes = re.findall(r"\b\d{3,4}\b", desc)
+        if any(k in desc_lower for k in ARTIST_KEYS):
+            artist_series = True
             artist_codes.update(codes)
         elif any(k in desc_lower for k in RETOUCH_KEYS):
             retouch.append({"name": desc.strip(), "qty": qty})
             retouch_codes.update(codes)
-
     return retouch, artist_series, retouch_codes, artist_codes
 
 
@@ -422,18 +409,9 @@ class OCRExtractor:
         if not cols:
             return []
 
-        # Sort each column by y position and drop header text
-        def clean(col: List[tuple]) -> List[tuple]:
-            headers = {
-                'portraits', 'images and sequence', 'qty', 'code', 'description'
-            }
-            return [(t, y) for t, y in col if t.strip().lower() not in headers]
-
-        sorted_cols = {k: sorted(clean(v), key=lambda t: t[1]) for k, v in cols.items()}
-
-        anchor_col = sorted_cols.get('COL_CODE') or []
-        if not anchor_col:
-            anchor_col = sorted_cols.get('COL_QTY', [])
+        # Sort each column by y position
+        sorted_cols = {k: sorted(v, key=lambda t: t[1]) for k, v in cols.items()}
+        anchor_col = sorted_cols.get('COL_CODE') or sorted_cols.get('COL_QTY') or []
         if not anchor_col:
             return []
 
@@ -441,7 +419,7 @@ class OCRExtractor:
         y_vals = [y for _, y in anchor_col]
         diffs = [b - a for a, b in zip(y_vals, y_vals[1:])] or [30]
         line_height = sorted(diffs)[len(diffs) // 2]
-        tol = max(line_height * 0.8, 12)
+        tol = line_height * 0.6
 
         def match_line(y_anchor: float, col: List[tuple]):
             if not col:
@@ -469,10 +447,7 @@ class OCRExtractor:
         logger.debug("Line counts: %s", counts)
 
         row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'], y_position=r['y']) for r in rows]
-        n_rows = len(row_records)
-        logger.debug("Reconstructed %d rows", n_rows)
-        if n_rows < 5:
-            raise ValueError(f"Row reconstruction failed: got {n_rows}")
+        logger.debug("Reconstructed %d rows", len(row_records))
         return row_records
     
     def _clean_rows(self, rows: List[RowRecord]) -> List[RowRecord]:
