@@ -38,6 +38,7 @@ RETOUCH_BOX = (1250, 250, 1370, 380)
 # includes the size and color.  The OCR noise can vary, so we first capture the
 # three main columns then search the description for the size/color keywords.
 FRAME_ROW = re.compile(r"^(?P<qty>\d+)\s+(?P<num>\d+)\s+(?P<desc>.+)$", re.I)
+FRAME_DESC_FALLBACK = re.compile(r"(\d+\s*x\s*\d+)\s+(black|cherry)\s+frame", re.I)
 SIZE_RE = re.compile(r"(\d+\s*x\s*\d+)", re.I)
 COLOR_RE = re.compile(r"\b(cherry|chetry|black|blk)\b", re.I)
 
@@ -64,16 +65,29 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
     frame_counts: Dict[str, Dict[str, int]] = {}
     for ln in lines:
         m = FRAME_ROW.search(ln)
-        if not m:
+        qty = 0
+        size = None
+        color = None
+        if m:
+            qty = int(m.group("qty"))
+            desc = m.group("desc")
+            size_m = SIZE_RE.search(desc)
+            color_m = COLOR_RE.search(desc)
+            if size_m and color_m:
+                size = size_m.group(1)
+                color = color_m.group(1)
+        if not m or not (size and color):
+            alt = FRAME_DESC_FALLBACK.search(ln)
+            if alt:
+                if qty == 0:
+                    q_match = re.search(r"\d+", ln)
+                    qty = int(q_match.group()) if q_match else 0
+                size = alt.group(1)
+                color = alt.group(2)
+        if not size or not color or qty <= 0:
             continue
-        qty = int(m.group("qty"))
-        desc = m.group("desc")
-        size_m = SIZE_RE.search(desc)
-        color_m = COLOR_RE.search(desc)
-        if not size_m or not color_m:
-            continue
-        size = size_m.group(1).replace(" ", "")
-        color = color_m.group(1).lower()
+        size = size.replace(" ", "")
+        color = color.lower()
         for pat, repl in SIZE_FIXES.items():
             size = re.sub(pat, repl, size, flags=re.I)
         color = COLOR_FIXES.get(color, color)
@@ -97,7 +111,7 @@ def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str
             continue
         desc = m.group("desc")
         desc_lower = desc.lower()
-        codes = re.findall(r"\b\d{3,4}\b", desc)
+        codes = re.findall(r"\b00\d{2}\b", desc)
         if any(k in desc_lower for k in ARTIST_KEYS):
             artist_series = True
             artist_codes.update(codes)
@@ -202,6 +216,9 @@ class OCRExtractor:
             
             # Step 4: Reconstruct rows by Y-centroid matching
             rows = self._reconstruct_rows(ocr_results)
+            n_rows = len(rows)
+            if n_rows < 5:
+                raise ValueError(f"Row reconstruction failed: got {n_rows}")
             
             # Step 5: Apply domain-aware fuzzy corrections
             cleaned_rows = self._clean_rows(rows)
@@ -283,7 +300,7 @@ class OCRExtractor:
                     lines.append((txt, y_mid))
 
                 results[col_name] = lines
-                logger.debug("Column %s: %d lines", col_name, len(lines))
+                logger.debug("Column {}: {} lines", col_name, len(lines))
 
             except Exception as e:
                 logger.error(f"OCR failed for column {col_name}: {e}")
@@ -409,9 +426,16 @@ class OCRExtractor:
         if not cols:
             return []
 
-        # Sort each column by y position
+        # Sort each column by y position and remove table headers
         sorted_cols = {k: sorted(v, key=lambda t: t[1]) for k, v in cols.items()}
-        anchor_col = sorted_cols.get('COL_CODE') or sorted_cols.get('COL_QTY') or []
+        header_re = re.compile(r"portraits|images and sequence", re.I)
+        for k, v in sorted_cols.items():
+            sorted_cols[k] = [t for t in v if not header_re.search(str(t[0]))]
+
+        counts = {k: len(v) for k, v in sorted_cols.items()}
+        logger.debug("Line counts: {}", counts)
+
+        anchor_col = sorted_cols.get('COL_CODE', [])
         if not anchor_col:
             return []
 
@@ -419,7 +443,7 @@ class OCRExtractor:
         y_vals = [y for _, y in anchor_col]
         diffs = [b - a for a, b in zip(y_vals, y_vals[1:])] or [30]
         line_height = sorted(diffs)[len(diffs) // 2]
-        tol = line_height * 0.6
+        tol = line_height * 0.8
 
         def match_line(y_anchor: float, col: List[tuple]):
             if not col:
@@ -443,11 +467,8 @@ class OCRExtractor:
             row['imgs'] = match_line(y, sorted_cols.get('COL_IMG', []))
             rows.append(row)
 
-        counts = {k: len(v) for k, v in sorted_cols.items()}
-        logger.debug("Line counts: %s", counts)
-
         row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'], y_position=r['y']) for r in rows]
-        logger.debug("Reconstructed %d rows", len(row_records))
+        logger.debug("Reconstructed {} rows", len(row_records))
         return row_records
     
     def _clean_rows(self, rows: List[RowRecord]) -> List[RowRecord]:
