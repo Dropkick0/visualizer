@@ -74,7 +74,7 @@ RETOUCH_BOX = (1250, 250, 1370, 380)
 # FRAMES table contains quantity, frame number and a free form description that
 # includes the size and color.  The OCR noise can vary, so we first capture the
 # three main columns then search the description for the size/color keywords.
-FRAME_ROW = re.compile(r"^(?P<qty>\d+)\s+(?P<num>\d+)\s+(?P<desc>.+)$", re.I)
+FRAME_ROW = re.compile(r"^(?P<qty>\d+)\s+\S+\s+(?P<desc>.+)$", re.I)
 SIZE_RE = re.compile(r"(\d+\s*x\s*\d+)", re.I)
 COLOR_RE = re.compile(r"\b(cherry|chetry|black|blk)\b", re.I)
 
@@ -98,6 +98,7 @@ ARTIST_KEYS = ["artist brush", "artist series"]
 
 def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
     """Parse frame counts from OCR lines."""
+    logger.debug("FRAMES raw lines:\n" + "\n".join(lines))
     frame_counts: Dict[str, Dict[str, int]] = {}
     for ln in lines:
         m = FRAME_ROW.search(ln)
@@ -107,10 +108,25 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
         desc = m.group("desc")
         size_m = SIZE_RE.search(desc)
         color_m = COLOR_RE.search(desc)
-        if not size_m or not color_m:
-            continue
-        size = size_m.group(1).replace(" ", "")
-        color = color_m.group(1).lower()
+        if size_m and color_m:
+            size = size_m.group(1).replace(" ", "")
+            color = color_m.group(1).lower()
+        else:
+            desc_lower = desc.lower()
+            size = ""
+            color = ""
+            if "5x7" in desc_lower:
+                size = "5x7"
+            elif "8x10" in desc_lower:
+                size = "8x10"
+            elif "10x13" in desc_lower:
+                size = "10x13"
+            if "cherry" in desc_lower:
+                color = "cherry"
+            elif "black" in desc_lower or "blk" in desc_lower:
+                color = "black"
+            if not size or not color:
+                continue
         for pat, repl in SIZE_FIXES.items():
             size = re.sub(pat, repl, size, flags=re.I)
         color = COLOR_FIXES.get(color, color)
@@ -211,62 +227,53 @@ class OCRExtractor:
         
         logger.info(f"Starting column-isolated OCR extraction from {screenshot_path}")
         
-        try:
-            # Step 1: Validate layout hasn't drifted
-            if not self._validate_layout(screenshot_path):
-                logger.warning("Layout validation failed - bounding boxes may be outdated")
+        # Step 1: Validate layout hasn't drifted
+        if not self._validate_layout(screenshot_path):
+            logger.warning("Layout validation failed - bounding boxes may be outdated")
             
-            # Step 2: Load and prepare base image
-            base_image = cv2.imread(str(screenshot_path))
-            if base_image is None:
-                raise ValueError(f"Could not load screenshot: {screenshot_path}")
+        # Step 2: Load and prepare base image
+        base_image = cv2.imread(str(screenshot_path))
+        if base_image is None:
+            raise ValueError(f"Could not load screenshot: {screenshot_path}")
             
-            # Step 3: Run column-isolated OCR
-            ocr_results = self._run_column_isolated_ocr(base_image, work_dir)
+        # Step 3: Run column-isolated OCR
+        ocr_results = self._run_column_isolated_ocr(base_image, work_dir)
 
-            # Additional ROIs for frames and retouch sections
-            self.frames_lines = self._ocr_roi(base_image, FRAMES_TABLE, "FRAMES", work_dir)
-            self.retouch_lines = self._ocr_roi(base_image, RETOUCH_BOX, "RETOUCH", work_dir)
-            self.frame_counts = parse_frames(self.frames_lines)
-            (
-                self.retouch_items,
-                self.artist_series,
-                self.retouch_codes,
-                self.artist_codes,
-            ) = parse_retouch(self.retouch_lines)
-            logger.info(f"Frames parsed: {self.frame_counts}")
-            logger.info(f"Retouch parsed: {self.retouch_items}")
-            logger.info(f"Artist series detected: {self.artist_series}")
+        # Additional ROIs for frames and retouch sections
+        self.frames_lines = self._ocr_roi(base_image, FRAMES_TABLE, "FRAMES", work_dir)
+        self.retouch_lines = self._ocr_roi(base_image, RETOUCH_BOX, "RETOUCH", work_dir)
+        self.frame_counts = parse_frames(self.frames_lines)
+        (
+            self.retouch_items,
+            self.artist_series,
+            self.retouch_codes,
+            self.artist_codes,
+        ) = parse_retouch(self.retouch_lines)
+        logger.info(f"Frames parsed: {self.frame_counts}")
+        logger.info(f"Retouch parsed: {self.retouch_items}")
+        logger.info(f"Artist series detected: {self.artist_series}")
             
-            # Step 4: Reconstruct rows by Y-centroid matching
-            rows = self._reconstruct_rows(ocr_results)
+        # Step 4: Reconstruct rows by Y-centroid matching
+        rows = self._reconstruct_rows(ocr_results)
             
-            # Step 5: Apply domain-aware fuzzy corrections
-            cleaned_rows = self._clean_rows(rows)
+        # Step 5: Apply domain-aware fuzzy corrections
+        cleaned_rows = self._clean_rows(rows)
             
-            # Step 6: Validate and log results
-            validated_rows = self._validate_rows(cleaned_rows, work_dir)
+        # Step 6: Validate and log results
+        validated_rows = self._validate_rows(cleaned_rows, work_dir)
 
-            # Quick invariants
-            assert len(validated_rows) == 9
-            assert self.frame_counts.get('5x7', {}).get('cherry', 0) == 2
-            assert '0033' in self.retouch_codes
+        # Quick invariants moved to tests
 
-            # Performance tracking
-            total_time = time.time() - start_time
-            self.performance_stats['last_extraction_time'] = total_time
+        # Performance tracking
+        total_time = time.time() - start_time
+        self.performance_stats['last_extraction_time'] = total_time
             
-            logger.info(f"Extraction complete in {total_time:.2f}s - {len(validated_rows)} rows extracted")
+        logger.info(f"Extraction complete in {total_time:.2f}s - {len(validated_rows)} rows extracted")
             
-            if total_time > 1.0:
-                logger.warning(f"Extraction time {total_time:.2f}s exceeds 1.0s target")
+        if total_time > 1.0:
+            logger.warning(f"Extraction time {total_time:.2f}s exceeds 1.0s target")
             
-            return validated_rows
-            
-        except Exception as e:
-            logger.error(f"OCR extraction failed: {e}")
-            # Fallback: return empty list with error
-            return [RowRecord(warnings=[f"Extraction failed: {e}"])]
+        return validated_rows
     
     def _validate_layout(self, screenshot_path: Path) -> bool:
         """Detect if FileMaker layout has drifted using sentinel coordinates"""
@@ -301,8 +308,8 @@ class OCRExtractor:
         results: Dict[str, List[tuple]] = {}
 
         for col_name, bbox in self.column_boxes.items():
+            field = COLUMN_FIELDS.get(col_name, col_name)
             try:
-                field = COLUMN_FIELDS.get(col_name, col_name)
                 # Step 1: Crop column
                 x1, y1, x2, y2 = bbox
                 column_crop = base_image[y1:y2, x1:x2]
@@ -330,8 +337,7 @@ class OCRExtractor:
                 logger.debug("Column %s: %d lines", col_name, len(lines))
 
             except Exception as e:
-                logger.error(f"OCR failed for column {col_name}: {e}")
-                results[field] = []
+                raise RuntimeError(f"OCR failed for column {col_name}") from e
 
         return results
 
@@ -462,21 +468,70 @@ class OCRExtractor:
             return best.strip() if best else ""
 
         rows = []
-        for y_top, y_bot, qty_txt in qty_rows:
-            row = {
-                'qty': qty_txt.strip(),
-                'code': pick(cols.get('code', []), y_top, y_bot),
-                'desc': pick(cols.get('desc', []), y_top, y_bot),
-                'imgs': pick(cols.get('imgs', []), y_top, y_bot),
-            }
-            rows.append(row)
+        if len(qty_rows) >= 5:
+            for y_top, y_bot, qty_txt in qty_rows:
+                row = {
+                    'qty': qty_txt.strip(),
+                    'code': pick(cols.get('code', []), y_top, y_bot),
+                    'desc': pick(cols.get('desc', []), y_top, y_bot),
+                    'imgs': pick(cols.get('imgs', []), y_top, y_bot),
+                }
+                rows.append(row)
+        else:
+            # Fallback: cluster bands using all columns
+            bands: List[float] = []
+            for name, lines in cols.items():
+                for ent in lines:
+                    if len(ent) == 3:
+                        top, bot, _ = ent
+                        bands.append((top + bot) / 2)
+                    else:
+                        bands.append(ent[0])
+
+            if not bands:
+                raise ValueError("No OCR lines to cluster")
+
+            bands = sorted(bands)
+            tol_band = np.median(np.diff(bands)) * 0.6 if len(bands) > 1 else 20
+            clusters = []
+            cur = [bands[0]]
+            for y in bands[1:]:
+                if y - cur[-1] <= tol_band:
+                    cur.append(y)
+                else:
+                    clusters.append((min(cur), max(cur)))
+                    cur = [y]
+            clusters.append((min(cur), max(cur)))
+
+            def pick_any(col_lines, y_top, y_bot):
+                best, best_d = "", 1e9
+                mid = (y_top + y_bot) / 2
+                for ent in col_lines:
+                    if len(ent) == 3:
+                        ent_mid, txt = (ent[0] + ent[1]) / 2, ent[2]
+                    else:
+                        ent_mid, txt = ent[0], ent[1]
+                    d = abs(ent_mid - mid)
+                    if d < best_d and y_top - tol <= ent_mid <= y_bot + tol:
+                        best, best_d = txt.strip(), d
+                return best
+
+            for y_top, y_bot in clusters:
+                rows.append({
+                    'qty': pick_any(cols.get('qty', []), y_top, y_bot),
+                    'code': pick_any(cols.get('code', []), y_top, y_bot),
+                    'desc': pick_any(cols.get('desc', []), y_top, y_bot),
+                    'imgs': pick_any(cols.get('imgs', []), y_top, y_bot),
+                })
 
         logger.debug("Line counts: %s", {k: len(v) for k, v in cols.items()})
 
-        if len(rows) < 5:
-            raise ValueError(f"Row reconstruction failed, got {len(rows)} rows")
+        row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'])
+                       for r in rows if any([r['qty'], r['code'], r['desc'], r['imgs']])]
 
-        row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs']) for r in rows]
+        if len(row_records) < 5:
+            raise ValueError(f"Row reconstruction failed, got {len(row_records)} rows")
+
         logger.debug("Reconstructed %d rows", len(row_records))
         return row_records
     
