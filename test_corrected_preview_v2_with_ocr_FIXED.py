@@ -7,171 +7,10 @@ Uses our working OCRExtractor with precise bounding boxes to automatically detec
 import sys
 from pathlib import Path
 import re
-import csv
-from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 # Add app directory to path
 sys.path.insert(0, str(Path(__file__).parent))
-
-
-# Dataclasses reflecting parsed TSV structure
-@dataclass
-class RowTSV:
-    idx: int
-    qty: Optional[int]
-    code: Optional[str]
-    desc: Optional[str]
-    imgs: List[str]
-    artist_series: Optional[str]
-
-
-@dataclass
-class FrameReq:
-    frame_no: str
-    qty: int
-    desc: str
-
-
-def load_product_table() -> Dict[str, Dict]:
-    """Load product metadata from POINTS SHEET & CODES.csv."""
-    csv_path = Path(__file__).parent / "POINTS SHEET & CODES.csv"
-    products: Dict[str, Dict] = {}
-    try:
-        with open(csv_path, newline="") as f:
-            reader = csv.reader(f)
-            header = next(reader, None)
-            for row in reader:
-                if not row or not row[0].strip():
-                    continue
-                code = row[0].strip()
-                desc = (row[1] or "").strip()
-                meta: Dict[str, Optional[str]] = {"description": desc}
-                dlow = desc.lower()
-
-                if "trio portrait" in dlow:
-                    meta["type"] = "trio_%s" % ("10x20" if "10x20" in dlow else "5x10")
-                    meta["size"] = "10x20" if "10x20" in dlow else "5x10"
-                    meta["frame"] = "cherry" if "cherry" in dlow else "black"
-                    if "white" in dlow:
-                        meta["mat"] = "white"
-                    elif "gray" in dlow:
-                        meta["mat"] = "gray"
-                    elif "black" in dlow:
-                        meta["mat"] = "black"
-                    elif "creme" in dlow:
-                        meta["mat"] = "creme"
-                elif "complimentary 8x10" in dlow or "staff complimentary" in dlow:
-                    meta["type"] = "complimentary_8x10"
-                    if "keepsake" in dlow:
-                        meta["finish"] = "KEEPSAKE"
-                    elif "prestige" in dlow:
-                        meta["finish"] = "PRESTIGE"
-                    else:
-                        meta["finish"] = "BASIC"
-                elif "pair 5x7" in dlow:
-                    meta["type"] = "5x7_pair"
-                    if "keepsake" in dlow:
-                        meta["finish"] = "KEEPSAKE"
-                    elif "prestige" in dlow:
-                        meta["finish"] = "PRESTIGE"
-                    else:
-                        meta["finish"] = "BASIC"
-                elif "sheet of 8 wallets" in dlow:
-                    meta["type"] = "wallet_sheet"
-                    meta["finish"] = "BASIC"
-                elif "3.5x5" in dlow and "sheet" in dlow:
-                    meta["type"] = "3x5_sheet"
-                    meta["finish"] = "BASIC"
-                elif any(size in dlow for size in ["8x10", "10x13", "16x20", "20x24"]):
-                    meta["type"] = "large_print"
-                    if "8x10" in dlow:
-                        meta["size"] = "8x10"
-                    elif "10x13" in dlow:
-                        meta["size"] = "10x13"
-                    elif "16x20" in dlow:
-                        meta["size"] = "16x20"
-                    elif "20x24" in dlow:
-                        meta["size"] = "20x24"
-                    if "keepsake" in dlow:
-                        meta["finish"] = "KEEPSAKE"
-                    elif "prestige" in dlow:
-                        meta["finish"] = "PRESTIGE"
-                    else:
-                        meta["finish"] = "BASIC"
-                else:
-                    continue
-                products[code] = meta
-    except Exception as e:
-        print(f"⚠️ Failed to load product table: {e}")
-    return products
-
-
-def sort_large_print(items: List[Dict]) -> List[Dict]:
-    """Ensure complimentary prints come last in the large print section."""
-    comps = [i for i in items if i.get("complimentary")]
-    others = [i for i in items if not i.get("complimentary")]
-    return others + comps
-
-
-def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg: Dict[str, Dict], retouch_imgs: List[str]) -> List[Dict]:
-    products = load_product_table()
-    items: List[Dict] = []
-    retouch_set = set(retouch_imgs)
-
-    for r in rows:
-        if not r.code:
-            continue
-        meta = products.get(r.code)
-        if not meta:
-            continue
-
-        base = {
-            "code": r.code,
-            "qty": r.qty or 1,
-            "img_codes": r.imgs,
-            "artist_series": bool(r.artist_series),
-            "artist_series_label": r.artist_series,
-            "retouch": any(img in retouch_set for img in r.imgs),
-            "finish": meta.get("finish", "BASIC"),
-        }
-
-        t = meta.get("type")
-        if t and t.startswith("trio_"):
-            imgs = (r.imgs + ["", "", ""])[:3]
-            base.update({
-                "category": "trio_composite",
-                "size": meta.get("size", "5x10"),
-                "frame_color": meta.get("frame", "black"),
-                "mat_color": meta.get("mat", "white"),
-                "img_codes": imgs,
-            })
-            items.append(base)
-        elif t == "complimentary_8x10":
-            base.update({"category": "large_print", "size": "8x10", "complimentary": True})
-            items.append(base)
-        elif t == "wallet_sheet":
-            base.update({"category": "WALLET8", "size": "wallet"})
-            for _ in range(base["qty"]):
-                items.append(base.copy())
-        elif t == "3x5_sheet":
-            base.update({"category": "SHEET3x5", "size": "3.5x5"})
-            for _ in range(base["qty"]):
-                items.append(base.copy())
-        elif t == "5x7_pair":
-            base.update({"category": "ALL_5x7", "size": "5x7"})
-            for _ in range(base["qty"]):
-                items.append(base.copy())
-        elif t == "large_print":
-            base.update({"category": "large_print", "size": meta.get("size")})
-            for _ in range(base["qty"]):
-                items.append(base.copy())
-
-    from app.order_utils import frames_to_counts, apply_frames_to_items
-
-    frame_counts = frames_to_counts(frames)
-    apply_frames_to_items(items, frame_counts)
-    return items
 
 def extract_image_codes_from_text(text: str) -> List[str]:
     """Extract 4-digit image codes from text"""
@@ -375,15 +214,20 @@ def determine_frame_requirements_from_items(order_items: List[Dict]) -> Dict[str
     }
     
     for item in order_items:
-        cat = item.get("category", "")
-        size = item.get("size", "")
-        qty = item.get("qty", item.get("quantity", 1))
-
-        if cat == "large_print":
-            if size in frame_requirements:
-                frame_requirements[size] += qty
-        elif cat == "ALL_5x7" or (cat == "medium_print" and size == "5x7"):
-            frame_requirements["5x7"] += qty * 2
+        size_category = item.get('size_category', '')
+        if size_category == 'large':
+            # Individual prints can have frames
+            if '8x10' in item.get('display_name', ''):
+                frame_requirements["8x10"] += item.get('quantity', 1)
+            elif '10x13' in item.get('display_name', ''):
+                frame_requirements["10x13"] += item.get('quantity', 1)
+            elif '16x20' in item.get('display_name', ''):
+                frame_requirements["16x20"] += item.get('quantity', 1)
+            elif '20x24' in item.get('display_name', ''):
+                frame_requirements["20x24"] += item.get('quantity', 1)
+        elif size_category == 'medium_sheet':
+            # 5x7 pairs can be split for framing
+            frame_requirements["5x7"] += item.get('quantity', 1) * 2  # Each pair = 2 individual 5x7s
     
     # Limit frames to reasonable numbers (based on typical order)
     frame_requirements["5x7"] = min(frame_requirements["5x7"], 3)  # Max 3 frames for 5x7s
