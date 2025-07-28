@@ -5,6 +5,7 @@ Implements column-isolated OCR with high-DPI scaling and intelligent row reconst
 
 import cv2
 import numpy as np
+import os
 import re
 import difflib
 import time
@@ -95,6 +96,19 @@ OPTION_ROW = re.compile(r"^(?P<qty>\d+)\s+(?P<desc>.+)$", re.I)
 RETOUCH_KEYS = ["retouch", "softens facial lines", "whitens teeth", "blends skin tones"]
 ARTIST_KEYS = ["artist brush", "artist series"]
 
+# ----- Row grid tuning -----
+ROW_COUNT_DEFAULT = 18
+ORDER_ROI_TOP = 140     # px from screenshot top
+ORDER_ROI_BOTTOM = 1850 # px from screenshot top
+ROW_EXTRA_PAD = 6       # px pad added above/below each row
+
+# Optional manual tweaks: row_index -> (dy_top, dy_bot)
+ROW_MANUAL_OFFSETS = {
+    # 0-based row indices
+    # 3: (-4, +8),
+    # 7: (+10, +10),
+}
+
 
 def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
     """Parse frame counts from OCR lines."""
@@ -151,8 +165,26 @@ def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str
             artist_codes.update(codes)
         elif any(k in desc_lower for k in RETOUCH_KEYS):
             retouch.append({"name": desc.strip(), "qty": qty})
-            retouch_codes.update(codes)
+    retouch_codes.update(codes)
     return retouch, artist_series, retouch_codes, artist_codes
+
+
+def build_row_bboxes(img_h: int) -> List[Tuple[int, int, Optional[int], int]]:
+    """Build bounding boxes for each physical row of the table."""
+    top = ORDER_ROI_TOP
+    bottom = ORDER_ROI_BOTTOM if ORDER_ROI_BOTTOM > 0 else img_h + ORDER_ROI_BOTTOM
+    total_h = bottom - top
+    row_h = total_h / ROW_COUNT_DEFAULT
+
+    bboxes = []
+    for i in range(ROW_COUNT_DEFAULT):
+        y1 = int(top + i * row_h)
+        y2 = int(top + (i + 1) * row_h)
+        dy_top, dy_bot = ROW_MANUAL_OFFSETS.get(i, (0, 0))
+        y1 = max(0, y1 + dy_top - ROW_EXTRA_PAD)
+        y2 = min(img_h, y2 + dy_bot + ROW_EXTRA_PAD)
+        bboxes.append((0, y1, None, y2))
+    return bboxes
 
 
 @dataclass
@@ -173,10 +205,20 @@ class RowRecord:
     y_position: float = 0.0
     confidence: float = 0.0
     warnings: List[str] = None
+    raw: str = ""
     
     def __post_init__(self):
         if self.warnings is None:
             self.warnings = []
+
+
+ROW_RE = re.compile(
+    r'^\s*(?P<qty>\d+)\s+'
+    r'(?P<code>\d+(?:\.\d+)?)\s+'
+    r'(?P<desc>.+?)'
+    r'(?:\s+(?P<imgs>(?:\d{3,4}(?:\s*,\s*\d{3,4})*)))?\s*$',
+    re.I,
+)
 
 
 class OCRExtractor:
@@ -193,6 +235,7 @@ class OCRExtractor:
         self.artist_series: bool = False
         self.retouch_codes: Set[str] = set()
         self.artist_codes: Set[str] = set()
+        self.single_line_mode = os.environ.get("SINGLE_LINE_MODE", "1") == "1"
         
         # Load product codes for fuzzy matching
         self._load_product_codes()
@@ -228,7 +271,7 @@ class OCRExtractor:
             work_dir = Path("tmp")
         work_dir.mkdir(exist_ok=True)
         
-        logger.info(f"Starting column-isolated OCR extraction from {screenshot_path}")
+        logger.info(f"Starting OCR extraction from {screenshot_path}")
         
         try:
             # Step 1: Validate layout hasn't drifted
@@ -240,8 +283,14 @@ class OCRExtractor:
             if base_image is None:
                 raise ValueError(f"Could not load screenshot: {screenshot_path}")
             
-            # Step 3: Run column-isolated OCR
-            ocr_results = self._run_column_isolated_ocr(base_image, work_dir)
+            # Step 3: Extract rows
+            if self.single_line_mode:
+                from PIL import Image
+                pil_img = Image.fromarray(cv2.cvtColor(base_image, cv2.COLOR_BGR2RGB))
+                rows = self._ocr_rows_full_line(pil_img)
+            else:
+                ocr_results = self._run_column_isolated_ocr(base_image, work_dir)
+                rows = self._reconstruct_rows(ocr_results)
 
             # Additional ROIs for frames and retouch sections
             self.frames_lines = self._ocr_roi(base_image, FRAMES_TABLE, "FRAMES", work_dir)
@@ -256,14 +305,11 @@ class OCRExtractor:
             logger.info(f"Frames parsed: {self.frame_counts}")
             logger.info(f"Retouch parsed: {self.retouch_items}")
             logger.info(f"Artist series detected: {self.artist_series}")
-            
-            # Step 4: Reconstruct rows by Y-centroid matching
-            rows = self._reconstruct_rows(ocr_results)
-            
-            # Step 5: Apply domain-aware fuzzy corrections
+
+            # Step 4: Apply domain-aware fuzzy corrections
             cleaned_rows = self._clean_rows(rows)
-            
-            # Step 6: Validate and log results
+
+            # Step 5: Validate and log results
             validated_rows = self._validate_rows(cleaned_rows, work_dir)
 
             # Performance tracking
@@ -442,6 +488,33 @@ class OCRExtractor:
                 lines.append(OcrLine(top=y_top, bottom=y_bot, mid=(y_top + y_bot) / 2, text=text))
 
         return lines
+
+    def _ocr_rows_full_line(self, pil_img) -> List[RowRecord]:
+        """OCR the portrait table using fixed row bands."""
+        img_h = pil_img.height
+        boxes = build_row_bboxes(img_h)
+        rows: List[RowRecord] = []
+        for idx, (x1, y1, x2, y2) in enumerate(boxes):
+            crop = pil_img.crop((x1, y1, x2 or pil_img.width, y2))
+            lines = win_ocr(crop)
+            text = "\n".join(t for (_, _), t in lines).strip() if lines else ""
+            if not text:
+                continue
+            m = ROW_RE.match(text)
+            if not m:
+                logger.debug("Row %d unparsable: %r", idx, text)
+                continue
+            rows.append(
+                RowRecord(
+                    qty=m.group('qty'),
+                    code=m.group('code'),
+                    desc=m.group('desc').strip(),
+                    imgs=m.group('imgs') or '',
+                    y_position=(y1 + y2) / 2,
+                    raw=text,
+                )
+            )
+        return rows
     
     def _reconstruct_with_anchor(self, cols: Dict[str, List[OcrLine]], qty_rows: List[OcrLine]) -> List[RowRecord]:
         """Original reconstruction anchored on quantity column."""
