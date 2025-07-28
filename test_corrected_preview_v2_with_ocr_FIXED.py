@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 import re
 from typing import Dict, List
+from app.order_from_tsv import rows_to_order_items
 
 # Add app directory to path
 sys.path.insert(0, str(Path(__file__).parent))
