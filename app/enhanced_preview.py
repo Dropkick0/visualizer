@@ -2876,8 +2876,8 @@ class EnhancedPortraitPreviewGenerator:
             # Check for Artist Series
             is_artist_series = self._is_artist_series(item, spec)
             
-            # Check for Retouch (if any image codes are in retouch list)
-            is_retouch = self._is_retouch(image_codes or [])
+            # Check for Retouch (if any image codes or item flag indicate it)
+            is_retouch = self._is_retouch(image_codes or [], item)
             
             # Determine banner text
             banner_text = None
@@ -2968,15 +2968,15 @@ class EnhancedPortraitPreviewGenerator:
             
         return False
 
-    def _is_retouch(self, image_codes: List[str]) -> bool:
-        """Check if any image codes are in the retouch list"""
-        # Define retouch list (this would come from the screenshot data in real implementation)
-        # For demo purposes, let's say these images are in retouch list
-        retouch_list = ['0033', '0039']  # Images that need retouching
-        
-        # Check if any image codes match retouch list
+    def _is_retouch(self, image_codes: List[str], item: Dict | None = None) -> bool:
+        """Check if an item or its images are flagged for retouch."""
+        if item and item.get('retouch'):
+            return True
+
+        # Fallback to legacy list based on image codes
+        retouch_list = ['0033', '0039']
         for code in image_codes:
             if code in retouch_list:
                 return True
-                
+
         return False
