@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 """
-Test Enhanced Preview Generator - OCR-based V3 WITH FRAMES (FIXED VERSION)
-Uses our working OCRExtractor with precise bounding boxes to automatically detect order items
+Test Enhanced Preview Generator using FileMaker TSV input.
+Parses the TSV dump instead of performing OCR to build order items.
 """
 
 import sys
 from pathlib import Path
-import re
 from typing import Dict, List
 
 from app.order_utils import expand_row_to_items, apply_frames_to_items
+from app.fm_dump_parser import parse_fm_dump, ParsedOrder
 
 # Add app directory to path
 sys.path.insert(0, str(Path(__file__).parent))
-
-def extract_image_codes_from_text(text: str) -> List[str]:
-    """Extract 4-digit image codes from text"""
-    codes = re.findall(r'\b(\d{4})\b', text)
-    return list(set(codes))  # Remove duplicates
 
 
 def determine_frame_requirements_from_items(order_items: List[Dict]) -> Dict[str, int]:
@@ -33,13 +28,12 @@ def determine_frame_requirements_from_items(order_items: List[Dict]) -> Dict[str
             frame_requirements["5x7"] += it.get("quantity",1)*2
     return frame_requirements
 
-def test_ocr_based_preview_fixed(screenshot_path: str):
-    """Test with our working OCRExtractor and precise bounding boxes"""
-    print("🎨 Enhanced Portrait Preview - OCR-based Detection V3 (FIXED VERSION)")
+def test_fm_dump_preview(tsv_path: str):
+    """Generate preview solely from FileMaker TSV dump"""
+    print("🎨 Portrait Preview - TSV Input")
     print("=" * 80)
-    
+
     try:
-        from app.ocr_extractor import OCRExtractor
         from app.enhanced_preview import EnhancedPortraitPreviewGenerator
         from app.config import load_product_config
 
@@ -47,58 +41,40 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         products_config = load_product_config()
         products_cfg = products_config["products_by_code"]
         print(f"✅ Loaded {len(products_config.get('products', []))} product configurations")
-        
-        # Step 1: OCR Extraction with our working system
-        print("\n🔍 Step 1: OCR Extraction with Production OCRExtractor")
+
+        # Step 1: Parse TSV dump
+        print("\n🔍 Step 1: Parse FileMaker TSV dump")
         print("=" * 60)
-        
-        screenshot_file = Path(screenshot_path)
-        if not screenshot_file.exists():
-            print(f"❌ Screenshot not found: {screenshot_file}")
-            return False
-        
-        # Initialize our working OCR extractor
-        extractor = OCRExtractor()
-        
-        # Extract rows using our proven bounding boxes
-        print(f"📸 Extracting from: {screenshot_file}")
-        try:
-            rows = extractor.extract_rows(str(screenshot_file))
-        except Exception as e:
-            print(f"❌ OCR extraction failed: {e}")
+
+        tsv_file = Path(tsv_path)
+        if not tsv_file.exists():
+            print(f"❌ TSV file not found: {tsv_file}")
             return False
 
-        if not rows:
-            print("❌ No rows extracted from OCR")
-            return False
+        parsed: ParsedOrder = parse_fm_dump(str(tsv_file))
+        rows = [
+            {"qty": r.qty or 0, "code": r.code or "", "imgs": ",".join(r.imgs)}
+            for r in parsed.rows
+        ]
 
-        print("✅ OCR extraction successful:")
-        print(f"   • Rows extracted: {len(rows)}")
-        for i, row in enumerate(rows, 1):
-            print(f"   Row {i}: Qty:{row.qty} Code:{row.code} Imgs:{row.imgs}")
-
-        # Merge all row text for parsing
-        all_codes = " ".join(r.code for r in rows)
-        all_desc = " ".join(r.desc for r in rows)
-        all_imgs = " ".join(r.imgs for r in rows)
+        print(f"✅ Parsed {len(rows)} rows from TSV")
+        for i, r in enumerate(parsed.rows, 1):
+            print(f"   Row {i}: Qty:{r.qty} Code:{r.code} Imgs:{' '.join(r.imgs)}")
 
         # Step 2: Parse extracted data
         print("\n📋 Step 2: Parsing Extracted Data")
         print("=" * 60)
         
         # Extract product codes from the code column
-        product_codes = re.findall(r'\b(\d+(?:\.\d+)?)\b', all_codes)
-        product_codes = [c for c in product_codes if len(c) >= 3]
-
-        # Extract image codes from the images column and description
-        all_text = f"{all_imgs} {all_desc}"
-        print(f"   • OCR text for codes: '{all_text[:100]}...'")
-        image_codes = extract_image_codes_from_text(all_text)
-
+        product_codes = [r.code for r in parsed.rows if r.code]
+        image_codes: List[str] = []
+        for r in parsed.rows:
+            image_codes.extend(r.imgs)
+        image_codes = sorted(set(image_codes))
 
         if not image_codes:
-            print("   • No image codes detected in OCR")
-        
+            print("   • No image codes detected in TSV")
+
         print(f"   • Found product codes: {product_codes}")
         print(f"   • Found image codes: {image_codes}")
         
@@ -106,16 +82,19 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         print("\n🔄 Step 3: Mapping to Order Items")
         print("=" * 60)
 
+        from app.ocr_extractor import parse_frames
+
         order_items = []
         for r in rows:
-            base = {"qty": r.qty or 0, "code": r.code, "imgs": r.imgs}
             try:
-                order_items.extend(expand_row_to_items(base, products_cfg))
+                order_items.extend(expand_row_to_items(r, products_cfg))
             except KeyError as e:
-                print(f"❌ {e} in {base}")
+                print(f"❌ {e} in {r}")
                 return False
 
-        order_items = apply_frames_to_items(order_items, extractor.frame_counts.copy())
+        frame_lines = [f"{f.qty} {f.desc}" for f in parsed.frames]
+        frame_counts = parse_frames(frame_lines)
+        order_items = apply_frames_to_items(order_items, frame_counts)
 
         # Ensure items have at least one image before preview generation
         order_items = [it for it in order_items if it.get("images")]
@@ -194,9 +173,9 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         generator = EnhancedPortraitPreviewGenerator(products_config, existing_images, output_dir)
         
         # Generate preview
-        output_path = output_dir / "ocr_extracted_preview_with_frames.png"
-        
-        print("🎨 Generating preview from OCR-extracted data...")
+        output_path = output_dir / "tsv_preview_with_frames.png"
+
+        print("🎨 Generating preview from TSV data...")
         print(f"   • Order items: {len(order_items)}")
         print(f"   • Images: {len(existing_images)}")
         print(f"   • Output: {output_path}")
@@ -206,9 +185,9 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         )
         
         if success:
-            print("✅ OCR-based preview created successfully!")
+            print("✅ TSV-based preview created successfully!")
             print(f"📁 Saved to: {output_path}")
-            print("🎯 Successfully used working OCR to extract and render actual FileMaker order")
+            print("🎯 Successfully parsed TSV dump and rendered FileMaker order")
             print("📊 Order contained:")
             for item in order_items:
                 print(f"   • {item.get('display_name', item['product_name'])}")
@@ -224,12 +203,12 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         return False
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python test_corrected_preview_v2_with_ocr_FIXED.py <screenshot_path>")
+    if len(sys.argv) < 2:
+        print("Usage: python test_corrected_preview_v2_with_ocr_FIXED.py <fm_dump.tsv>")
         sys.exit(1)
 
-    screenshot_path = sys.argv[1]
-    success = test_ocr_based_preview_fixed(screenshot_path)
+    tsv_path = sys.argv[1]
+    success = test_fm_dump_preview(tsv_path)
 
     if not success:
         print("\nPress Enter to exit...")
