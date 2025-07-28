@@ -1,5 +1,4 @@
 from typing import Dict, List
-from loguru import logger
 
 # Simple product specification used for tests
 PRODUCT_SPECS = {
@@ -56,7 +55,7 @@ def expand_row_to_items(row: Dict, product_specs: Dict[str, Dict] = PRODUCT_SPEC
     """Expand a row definition into individual items preserving image order."""
     imgs = [c.strip() for c in row.get('imgs', '').split(',') if c.strip()]
     if not imgs:
-        logger.warning(f"Row missing image codes: {row}")
+        return []
     qty = int(row.get('qty', 0))
     code = row.get('code')
     spec = product_specs.get(code, {})
