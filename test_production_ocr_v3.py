@@ -209,7 +209,9 @@ def convert_rows_to_preview_items(rows: List, products_config: Dict) -> List[Dic
         if row.imgs:
             image_codes = [code.strip() for code in row.imgs.split(',') if code.strip()]
         if not image_codes:
-            image_codes = ['0033']  # Fallback
+            print(f"   ⚠️  Skipping row {row.code} - no image codes")
+            row.warnings.append("No image codes for row; skipping item")
+            continue
         
         # Create order item
         order_item = {
