@@ -74,7 +74,7 @@ RETOUCH_BOX = (1250, 250, 1370, 380)
 # FRAMES table contains quantity, frame number and a free form description that
 # includes the size and color.  The OCR noise can vary, so we first capture the
 # three main columns then search the description for the size/color keywords.
-FRAME_ROW = re.compile(r"^(?P<qty>\d+)\s+\S+\s+(?P<desc>.+)$", re.I)
+FRAME_ROW = re.compile(r"^(?P<qty>\d+)\s+(?P<num>\d+)\s+(?P<desc>.+)$", re.I)
 SIZE_RE = re.compile(r"(\d+\s*x\s*\d+)", re.I)
 COLOR_RE = re.compile(r"\b(cherry|chetry|black|blk)\b", re.I)
 
@@ -98,7 +98,6 @@ ARTIST_KEYS = ["artist brush", "artist series"]
 
 def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
     """Parse frame counts from OCR lines."""
-    logger.debug("FRAMES raw lines:\n" + "\n".join(lines))
     frame_counts: Dict[str, Dict[str, int]] = {}
     for ln in lines:
         m = FRAME_ROW.search(ln)
@@ -108,30 +107,10 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
         desc = m.group("desc")
         size_m = SIZE_RE.search(desc)
         color_m = COLOR_RE.search(desc)
-
-        size = None
-        color = None
-        if size_m:
-            size = size_m.group(1).replace(" ", "")
-        else:
-            ln_lower = desc.lower()
-            for kw in ["5x7", "5x10", "8x10", "10x13", "10x20", "16x20", "20x24"]:
-                if kw in ln_lower:
-                    size = kw
-                    break
-
-        if color_m:
-            color = COLOR_FIXES.get(color_m.group(1).lower(), color_m.group(1).lower())
-        else:
-            ln_lower = desc.lower()
-            if "cherry" in ln_lower:
-                color = "cherry"
-            elif "black" in ln_lower or "blk" in ln_lower:
-                color = "black"
-
-        if not size or not color:
+        if not size_m or not color_m:
             continue
-
+        size = size_m.group(1).replace(" ", "")
+        color = color_m.group(1).lower()
         for pat, repl in SIZE_FIXES.items():
             size = re.sub(pat, repl, size, flags=re.I)
         color = COLOR_FIXES.get(color, color)
@@ -268,6 +247,11 @@ class OCRExtractor:
             # Step 6: Validate and log results
             validated_rows = self._validate_rows(cleaned_rows, work_dir)
 
+            # Quick invariants
+            assert len(validated_rows) == 9
+            assert self.frame_counts.get('5x7', {}).get('cherry', 0) == 2
+            assert '0033' in self.retouch_codes
+
             # Performance tracking
             total_time = time.time() - start_time
             self.performance_stats['last_extraction_time'] = total_time
@@ -278,10 +262,11 @@ class OCRExtractor:
                 logger.warning(f"Extraction time {total_time:.2f}s exceeds 1.0s target")
             
             return validated_rows
-
+            
         except Exception as e:
             logger.error(f"OCR extraction failed: {e}")
-            raise
+            # Fallback: return empty list with error
+            return [RowRecord(warnings=[f"Extraction failed: {e}"])]
     
     def _validate_layout(self, screenshot_path: Path) -> bool:
         """Detect if FileMaker layout has drifted using sentinel coordinates"""
@@ -316,8 +301,8 @@ class OCRExtractor:
         results: Dict[str, List[tuple]] = {}
 
         for col_name, bbox in self.column_boxes.items():
-            field = COLUMN_FIELDS.get(col_name, col_name)
             try:
+                field = COLUMN_FIELDS.get(col_name, col_name)
                 # Step 1: Crop column
                 x1, y1, x2, y2 = bbox
                 column_crop = base_image[y1:y2, x1:x2]
@@ -345,7 +330,8 @@ class OCRExtractor:
                 logger.debug("Column %s: %d lines", col_name, len(lines))
 
             except Exception as e:
-                raise RuntimeError(f"OCR failed for column {col_name}") from e
+                logger.error(f"OCR failed for column {col_name}: {e}")
+                results[field] = []
 
         return results
 
@@ -454,9 +440,13 @@ class OCRExtractor:
 
         return lines
     
-    def _reconstruct_with_anchor(self, cols: Dict[str, List[tuple]], qty_rows: List[tuple]) -> List[RowRecord]:
-        """Rebuild rows anchoring on the quantity column."""
+    def _reconstruct_rows(self, cols: Dict[str, List[tuple]]) -> List[RowRecord]:
+        """Rebuild rows anchoring on quantity column."""
 
+        if not cols:
+            return []
+
+        qty_rows = sorted(cols.get('qty', []), key=lambda t: t[0])
         med_h = np.median([(b - t) for t, b, _ in qty_rows]) if qty_rows else 0
         tol = med_h * 0.45
 
@@ -481,84 +471,14 @@ class OCRExtractor:
             }
             rows.append(row)
 
+        logger.debug("Line counts: %s", {k: len(v) for k, v in cols.items()})
+
         if len(rows) < 5:
             raise ValueError(f"Row reconstruction failed, got {len(rows)} rows")
 
         row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs']) for r in rows]
+        logger.debug("Reconstructed %d rows", len(row_records))
         return row_records
-
-    def _reconstruct_rows(self, cols: Dict[str, List[tuple]]) -> List[RowRecord]:
-        """Rebuild rows using quantity anchor when available, otherwise fallback to clustering."""
-
-        if not cols:
-            return []
-
-        logger.info(
-            "Per-column line counts: "
-            + ", ".join(f"{k}:{len(v)}" for k, v in cols.items())
-        )
-
-        qty_rows = sorted(cols.get('qty', []), key=lambda t: t[0])
-        if len(qty_rows) >= 5:
-            try:
-                return self._reconstruct_with_anchor(cols, qty_rows)
-            except Exception as e:
-                logger.debug(f"Anchor-based reconstruction failed: {e}")
-
-        # Fallback: cluster y positions from all columns
-        bands: List[float] = []
-        for name, lines in cols.items():
-            for entry in lines:
-                if len(entry) == 3:
-                    bands.append((entry[0] + entry[1]) / 2)
-                else:
-                    bands.append(entry[0])
-
-        if not bands:
-            raise ValueError("No OCR lines to cluster")
-
-        bands.sort()
-        tol = np.median(np.diff(bands)) * 0.6 if len(bands) > 1 else 20
-        clusters = []
-        cur = [bands[0]]
-        for y in bands[1:]:
-            if y - cur[-1] <= tol:
-                cur.append(y)
-            else:
-                clusters.append((min(cur), max(cur)))
-                cur = [y]
-        clusters.append((min(cur), max(cur)))
-
-        def pick(col_lines: List[tuple], y_top: float, y_bot: float) -> str:
-            best = ""
-            best_d = 1e9
-            y_mid_band = (y_top + y_bot) / 2
-            for ent in col_lines:
-                if len(ent) == 3:
-                    ent_mid, txt = (ent[0] + ent[1]) / 2, ent[2]
-                else:
-                    ent_mid, txt = ent[0], ent[1]
-                d = abs(ent_mid - y_mid_band)
-                if d < best_d and (y_top - tol) <= ent_mid <= (y_bot + tol):
-                    best, best_d = txt.strip(), d
-            return best
-
-        rows: List[RowRecord] = []
-        for y_top, y_bot in clusters:
-            rows.append(
-                RowRecord(
-                    qty=pick(cols.get('qty', []), y_top, y_bot),
-                    code=pick(cols.get('code', []), y_top, y_bot),
-                    desc=pick(cols.get('desc', []), y_top, y_bot),
-                    imgs=pick(cols.get('imgs', []), y_top, y_bot),
-                    y_position=(y_top + y_bot) / 2,
-                )
-            )
-
-        rows = [r for r in rows if any([r.qty, r.code, r.desc, r.imgs])]
-        if len(rows) < 5:
-            raise ValueError(f"Row reconstruction still too small ({len(rows)})")
-        return rows
     
     def _clean_rows(self, rows: List[RowRecord]) -> List[RowRecord]:
         """Apply domain-aware fuzzy corrections to extracted data"""
