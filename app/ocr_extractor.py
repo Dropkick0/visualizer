@@ -846,8 +846,9 @@ class OCRExtractor:
         if not text:
             return ""
 
-        # Extract only 4-digit codes starting with 0 to avoid product codes
-        codes = re.findall(r"\b0\d{3}\b", str(text))
+
+        # Extract all 4-digit image codes preserving OCR order
+        codes = re.findall(r"\b\d{4}\b", str(text))
         return ", ".join(codes)
 
     def _validate_rows(self, rows: List[RowRecord], work_dir: Path) -> List[RowRecord]:
