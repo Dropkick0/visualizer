@@ -1,7 +1,7 @@
 from typing import Dict, List
 import re
 
-from .fm_dump_parser import RowTSV as Row, FrameReq as Frame
+from .fm_dump_parser import Row, Frame
 
 
 def expand_row_to_items(row: Dict, products_cfg: Dict[str, Dict]) -> List[Dict]:
