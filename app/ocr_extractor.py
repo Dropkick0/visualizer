@@ -63,22 +63,28 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
     """Parse frame counts from OCR lines."""
     frame_counts: Dict[str, Dict[str, int]] = {}
     for ln in lines:
-        m = FRAME_ROW.search(ln)
-        if not m:
+        # Extract quantity at start of line
+        qty_m = re.search(r"^\s*(\d+)", ln)
+        if not qty_m:
             continue
-        qty = int(m.group("qty"))
-        desc = m.group("desc")
-        size_m = SIZE_RE.search(desc)
-        color_m = COLOR_RE.search(desc)
+        qty = int(qty_m.group(1))
+
+        # Look for size/color anywhere in the line
+        size_m = SIZE_RE.search(ln)
+        color_m = COLOR_RE.search(ln)
         if not size_m or not color_m:
             continue
+
         size = size_m.group(1).replace(" ", "")
         color = color_m.group(1).lower()
+
         for pat, repl in SIZE_FIXES.items():
             size = re.sub(pat, repl, size, flags=re.I)
         color = COLOR_FIXES.get(color, color)
+
         frame_counts.setdefault(size, {}).setdefault(color, 0)
         frame_counts[size][color] += qty
+
     return frame_counts
 
 
@@ -88,6 +94,8 @@ def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str
     artist_series = False
     retouch_codes: Set[str] = set()
     artist_codes: Set[str] = set()
+    code_re = re.compile(r"\b00\d{2}\b")
+
     for ln in lines:
         m = OPTION_ROW.search(ln)
         if not m:
@@ -95,15 +103,18 @@ def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str
         qty = int(m.group("qty"))
         if qty <= 0:
             continue
-        desc = m.group("desc")
+
+        desc = m.group("desc").strip()
         desc_lower = desc.lower()
-        codes = re.findall(r"\b\d{3,4}\b", desc)
+        codes = code_re.findall(desc)
+
         if any(k in desc_lower for k in ARTIST_KEYS):
             artist_series = True
             artist_codes.update(codes)
         elif any(k in desc_lower for k in RETOUCH_KEYS):
-            retouch.append({"name": desc.strip(), "qty": qty})
+            retouch.append({"name": desc, "qty": qty})
             retouch_codes.update(codes)
+
     return retouch, artist_series, retouch_codes, artist_codes
 
 
@@ -409,17 +420,25 @@ class OCRExtractor:
         if not cols:
             return []
 
-        # Sort each column by y position
+        # Sort each column by y position and drop obvious headers
         sorted_cols = {k: sorted(v, key=lambda t: t[1]) for k, v in cols.items()}
-        anchor_col = sorted_cols.get('COL_CODE') or sorted_cols.get('COL_QTY') or []
+
+        def numeric_lines(lines: List[tuple]) -> List[tuple]:
+            return [ln for ln in lines if re.search(r"\d", str(ln[0]))]
+
+        anchor_name = 'COL_CODE'
+        anchor_col = numeric_lines(sorted_cols.get('COL_CODE', []))
+        if not anchor_col:
+            anchor_name = 'COL_QTY'
+            anchor_col = numeric_lines(sorted_cols.get('COL_QTY', []))
         if not anchor_col:
             return []
 
-        # Estimate line height for tolerance
+        # Estimate line height for tolerance (min 12 px)
         y_vals = [y for _, y in anchor_col]
         diffs = [b - a for a, b in zip(y_vals, y_vals[1:])] or [30]
         line_height = sorted(diffs)[len(diffs) // 2]
-        tol = line_height * 0.6
+        tol = max(12, line_height * 0.8)
 
         def match_line(y_anchor: float, col: List[tuple]):
             if not col:
@@ -433,7 +452,7 @@ class OCRExtractor:
         rows = []
         for text, y in anchor_col:
             row = {'y': y, 'qty': '', 'code': '', 'desc': '', 'imgs': ''}
-            if sorted_cols.get('COL_CODE') is anchor_col:
+            if anchor_name == 'COL_CODE':
                 row['code'] = text
                 row['qty'] = match_line(y, sorted_cols.get('COL_QTY', []))
             else:
@@ -447,7 +466,10 @@ class OCRExtractor:
         logger.debug("Line counts: %s", counts)
 
         row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'], y_position=r['y']) for r in rows]
-        logger.debug("Reconstructed %d rows", len(row_records))
+        n_rows = len(row_records)
+        logger.debug("Reconstructed %d rows", n_rows)
+        if n_rows < 5:
+            raise ValueError(f"Row reconstruction failed: got {n_rows}")
         return row_records
     
     def _clean_rows(self, rows: List[RowRecord]) -> List[RowRecord]:
