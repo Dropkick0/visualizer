@@ -1,4 +1,7 @@
 from typing import Dict, List
+import re
+
+from .fm_dump_parser import Row, Frame
 
 
 def expand_row_to_items(row: Dict, products_cfg: Dict[str, Dict]) -> List[Dict]:
@@ -58,3 +61,47 @@ def apply_frames_to_items(items: List[Dict], frame_counts: Dict[str, Dict[str, i
                 break
 
     return items
+
+
+def rows_to_products(rows: List[Row], products_cfg: Dict[str, Dict], retouch_codes: List[str] | None = None, artist_flags: Dict[int, str] | None = None) -> List[Dict]:
+    """Convert parsed rows to order items using product config."""
+    items: List[Dict] = []
+    retouch_set = set(retouch_codes or [])
+    artist_flags = artist_flags or {}
+
+    for idx, row in enumerate(rows, 1):
+        row_dict = {
+            "qty": row.qty,
+            "code": row.code,
+            "imgs": ",".join(row.imgs),
+        }
+        try:
+            row_items = expand_row_to_items(row_dict, products_cfg)
+        except KeyError:
+            continue
+
+        for it in row_items:
+            it["retouch"] = bool(set(row.imgs) & retouch_set)
+            it["artist_series"] = bool(row.artist_series or artist_flags.get(idx))
+        items.extend(row_items)
+
+    return items
+
+
+def frames_to_counts(frames: List[Frame]) -> Dict[str, Dict[str, int]]:
+    """Convert Frame entries to size/color counts for apply_frames_to_items."""
+    counts: Dict[str, Dict[str, int]] = {}
+    for fr in frames:
+        desc_l = fr.desc.lower()
+        m = re.search(r"(\d+\s*x\s*\d+)", desc_l)
+        if not m:
+            continue
+        size = m.group(1).replace(" ", "")
+        color = "black"
+        if "cherry" in desc_l:
+            color = "cherry"
+        elif "white" in desc_l:
+            color = "white"
+        counts.setdefault(size, {}).setdefault(color, 0)
+        counts[size][color] += fr.qty
+    return counts
