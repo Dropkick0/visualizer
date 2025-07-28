@@ -114,12 +114,23 @@ def build_row_bboxes(img_w: int, img_h: int) -> List[tuple[int, int, int, int]]:
 def _prep_row_for_winocr(pil_crop: Image.Image) -> Image.Image:
     """Upscale and pad a row image before passing to Windows OCR."""
     w, h = pil_crop.size
-    new_w = max(int(w * ROW_SCALE_X), ROW_MIN_WIDTH)
-    new_h = int(h * ROW_SCALE_Y)
-    big = pil_crop.resize((int(w * ROW_SCALE_X), new_h), Image.BICUBIC)
+    # aim for ~30px cap height
+    scale = max(ROW_SCALE_Y, 30 / max(h, 1))
+    new_w = max(int(w * scale * ROW_SCALE_X / ROW_SCALE_Y), ROW_MIN_WIDTH)
+    new_h = int(h * scale)
+    big = pil_crop.resize((int(w * scale), new_h), Image.BICUBIC)
     canvas = Image.new("RGB", (new_w + ROW_SIDE_PAD * 2, new_h + 8), "white")
     canvas.paste(big, (ROW_SIDE_PAD, 4))
     return canvas
+
+
+def _ocr_full_table(pil_img, debug_dir: Path):
+    """Run OCR on the entire PORTRAITS ROI and return word boxes."""
+    ocr_lines = win_ocr(pil_img)
+    if OCR_DEBUG_ROWS:
+        with open(debug_dir / "full_pass_boxes.json", "w", encoding="utf-8") as f:
+            json.dump([{"bbox": b, "text": t} for b, t in ocr_lines], f, indent=2)
+    return ocr_lines
 
 
 # Regular expression patterns for parsing the extra tables
@@ -374,6 +385,7 @@ class OCRExtractor:
                 from PIL import Image
 
                 pil_img = Image.fromarray(cv2.cvtColor(base_image, cv2.COLOR_BGR2RGB))
+                _ocr_full_table(pil_img, Path("tmp/rows"))
                 rows = self._ocr_rows_full_line(pil_img)
                 if len(rows) == 0:
                     overlay = Path("tmp/rows/rows_overlay.png")
@@ -497,6 +509,8 @@ class OCRExtractor:
                     f.write("\n".join(raw_lines) or "<EMPTY>")
                 with open(debug_dir / f"row_{idx:02d}.txt", "w", encoding="utf-8") as f:
                     f.write(raw or "<EMPTY>")
+                with open(debug_dir / f"row_{idx:02d}_boxes.json", "w", encoding="utf-8") as f:
+                    json.dump([{"bbox": b, "text": t} for b, t in ocr_lines], f, indent=2)
 
             draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
             draw.text((x1 + 2, y1 + 2), f"{idx}", fill="red")
@@ -847,9 +861,10 @@ class OCRExtractor:
             return ""
 
 
-        # Extract all 4-digit image codes preserving OCR order
+        # Extract all 4-digit codes
         codes = re.findall(r"\b\d{4}\b", str(text))
-        return ", ".join(codes)
+        # Only true 4-digit image numbers, never 3-digit product codes
+        return ", ".join(c for c in codes if len(c) == 4)
 
     def _validate_rows(self, rows: List[RowRecord], work_dir: Path) -> List[RowRecord]:
         """Validate extracted rows and create QA log"""
