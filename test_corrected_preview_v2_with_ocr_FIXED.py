@@ -264,27 +264,20 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
         
         # Extract rows using our proven bounding boxes
         print(f"📸 Extracting from: {screenshot_file}")
-        try:
-            rows = extractor.extract_rows(str(screenshot_file))
-        except Exception as e:
-            print(f"❌ OCR extraction failed: {e}")
-            return False
-
+        rows = extractor.extract_rows(str(screenshot_file))
+        
         if not rows:
             print("❌ No rows extracted from OCR")
             return False
-
+        
         print("✅ OCR extraction successful:")
         print(f"   • Rows extracted: {len(rows)}")
-
-        all_codes = " ".join(r.code for r in rows if r.code)
-        all_desc = " ".join(r.desc for r in rows if r.desc)
-        all_imgs = " ".join(r.imgs for r in rows if r.imgs)
-
-        print(f"   • Product codes: '{all_codes}'")
-        if all_desc:
-            print(f"   • Description: '{all_desc[:100]}...'")
-        print(f"   • Images: '{all_imgs}'")
+        
+        # Get the extracted data
+        row = rows[0]  # Our column-isolated approach gives us one big row
+        print(f"   • Product codes: '{row.code}'")
+        print(f"   • Description: '{row.desc[:100]}...'")
+        print(f"   • Images: '{row.imgs}'")
         
         # Step 2: Parse extracted data  
         print("\n📋 Step 2: Parsing Extracted Data")
