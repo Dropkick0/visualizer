@@ -20,9 +20,10 @@ def expand_row_to_items(row: Dict, products_cfg: Dict[str, Dict]) -> List[Dict]:
             "product_code": code,
             "product_name": spec.get("name", code),
             "display_name": spec.get("display_name", spec.get("name", code)),
-            "size": spec.get("size", ""),
-            "size_category": spec.get("size_category", spec.get("category", "")),
-            "category": spec.get("category", ""),
+            # generator uses .size and .category to group
+            "size": spec.get("size") or spec.get("dimensions", ""),
+            "size_category": spec.get("size_category") or spec.get("category", ""),
+            "category": spec.get("category") or spec.get("size_category", ""),
             "images": imgs.copy(),
             "frame_eligible": spec.get("frame_eligible", spec.get("category") in ("print", "large_print")),
             "frame_qty": spec.get("frame_qty", 1),

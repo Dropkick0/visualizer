@@ -22,35 +22,15 @@ def extract_image_codes_from_text(text: str) -> List[str]:
 
 def determine_frame_requirements_from_items(order_items: List[Dict]) -> Dict[str, int]:
     """Determine frame requirements based on order items"""
-    frame_requirements = {
-        "5x7": 0,
-        "8x10": 0,
-        "10x13": 0,
-        "16x20": 0,
-        "20x24": 0
-    }
-    
-    for item in order_items:
-        size_category = item.get('size_category', '')
-        if size_category == 'large':
-            # Individual prints can have frames
-            if '8x10' in item.get('display_name', ''):
-                frame_requirements["8x10"] += item.get('quantity', 1)
-            elif '10x13' in item.get('display_name', ''):
-                frame_requirements["10x13"] += item.get('quantity', 1)
-            elif '16x20' in item.get('display_name', ''):
-                frame_requirements["16x20"] += item.get('quantity', 1)
-            elif '20x24' in item.get('display_name', ''):
-                frame_requirements["20x24"] += item.get('quantity', 1)
-        elif size_category == 'medium_sheet':
-            # 5x7 pairs can be split for framing
-            frame_requirements["5x7"] += item.get('quantity', 1) * 2  # Each pair = 2 individual 5x7s
-    
-    # Limit frames to reasonable numbers (based on typical order)
-    frame_requirements["5x7"] = min(frame_requirements["5x7"], 3)  # Max 3 frames for 5x7s
-    frame_requirements["8x10"] = min(frame_requirements["8x10"], 1)  # Max 1 frame for 8x10
-    frame_requirements["10x13"] = min(frame_requirements["10x13"], 1)  # Max 1 frame for 10x13
-    
+    frame_requirements = {"5x7":0,"8x10":0,"10x13":0,"16x20":0,"20x24":0}
+    for it in order_items:
+        if not it.get("frame_eligible"):
+            continue
+        size = it.get("size", "").replace(" ", "")
+        if size in frame_requirements:
+            frame_requirements[size] += it.get("quantity",1)
+        elif it.get("product_code") in ("570",):
+            frame_requirements["5x7"] += it.get("quantity",1)*2
     return frame_requirements
 
 def test_ocr_based_preview_fixed(screenshot_path: str):
@@ -136,6 +116,9 @@ def test_ocr_based_preview_fixed(screenshot_path: str):
                 return False
 
         order_items = apply_frames_to_items(order_items, extractor.frame_counts.copy())
+
+        # Ensure items have at least one image before preview generation
+        order_items = [it for it in order_items if it.get("images")]
         
         if not order_items:
             print("❌ No order items created")
