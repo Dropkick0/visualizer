@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 def extract_image_codes_from_text(text: str) -> List[str]:
     """Extract 4-digit image codes from text"""
-    codes = re.findall(r'\b(0\d{3})\b', text)
+    codes = re.findall(r'\b(\d{4})\b', text)
     return list(set(codes))  # Remove duplicates
 
 
