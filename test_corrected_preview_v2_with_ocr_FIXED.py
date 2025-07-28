@@ -17,57 +17,6 @@ def extract_image_codes_from_text(text: str) -> List[str]:
     codes = re.findall(r'\b(0\d{3})\b', text)
     return list(set(codes))  # Remove duplicates
 
-# ---------------------------------------------------------------------------
-#  TSV Mapping Helpers
-# ---------------------------------------------------------------------------
-
-# Minimal product table derived from "POINTS SHEET & CODES.csv".  The mapping is
-# intentionally small and favours numeric codes which are more reliable than the
-# descriptions extracted from OCR.
-PRODUCTS_TSV = {
-    "001": {"type": "complimentary_8x10", "finish": "BASIC", "size": "8x10"},
-    "002": {"type": "complimentary_8x10", "finish": "PRESTIGE", "size": "8x10"},
-    "003": {"type": "complimentary_8x10", "finish": "KEEPSAKE", "size": "8x10"},
-    "200": {"type": "wallet_sheet", "size": "wallet"},
-    "350": {"type": "3x5_sheet", "size": "3.5x5"},
-    "570": {"type": "5x7_pair", "finish": "BASIC", "size": "5x7"},
-    "571": {"type": "5x7_pair", "finish": "PRESTIGE", "size": "5x7"},
-    "572": {"type": "5x7_pair", "finish": "KEEPSAKE", "size": "5x7"},
-    "810": {"type": "large_print", "finish": "BASIC", "size": "8x10"},
-    "811": {"type": "large_print", "finish": "PRESTIGE", "size": "8x10"},
-    "812": {"type": "large_print", "finish": "KEEPSAKE", "size": "8x10"},
-    "9111": {"type": "complimentary_8x10", "finish": "BASIC", "size": "8x10"},
-    "9112": {"type": "complimentary_8x10", "finish": "PRESTIGE", "size": "8x10"},
-    "9113": {"type": "complimentary_8x10", "finish": "KEEPSAKE", "size": "8x10"},
-    "1013": {"type": "large_print", "finish": "BASIC", "size": "10x13"},
-    "1014": {"type": "large_print", "finish": "PRESTIGE", "size": "10x13"},
-    "1015": {"type": "large_print", "finish": "KEEPSAKE", "size": "10x13"},
-    "1620": {"type": "large_print", "finish": "BASIC", "size": "16x20"},
-    "1621": {"type": "large_print", "finish": "PRESTIGE", "size": "16x20"},
-    "1622": {"type": "large_print", "finish": "KEEPSAKE", "size": "16x20"},
-    "2024": {"type": "large_print", "finish": "BASIC", "size": "20x24"},
-    "2025": {"type": "large_print", "finish": "PRESTIGE", "size": "20x24"},
-    "2026": {"type": "large_print", "finish": "KEEPSAKE", "size": "20x24"},
-    # 5x10 trios
-    "510": {"type": "trio_5x10", "frame": "cherry", "mat": "creme"},
-    "510.1": {"type": "trio_5x10", "frame": "cherry", "mat": "white"},
-    "510.2": {"type": "trio_5x10", "frame": "cherry", "mat": "gray"},
-    "510.3": {"type": "trio_5x10", "frame": "cherry", "mat": "black"},
-    "511": {"type": "trio_5x10", "frame": "black", "mat": "creme"},
-    "511.1": {"type": "trio_5x10", "frame": "black", "mat": "white"},
-    "511.2": {"type": "trio_5x10", "frame": "black", "mat": "gray"},
-    "511.3": {"type": "trio_5x10", "frame": "black", "mat": "black"},
-    # 10x20 trios
-    "1020": {"type": "trio_10x20", "frame": "black", "mat": "white"},
-    "1020.1": {"type": "trio_10x20", "frame": "cherry", "mat": "white"},
-    "1020.2": {"type": "trio_10x20", "frame": "black", "mat": "gray"},
-    "1020.3": {"type": "trio_10x20", "frame": "cherry", "mat": "gray"},
-    "1020.4": {"type": "trio_10x20", "frame": "black", "mat": "black"},
-    "1020.5": {"type": "trio_10x20", "frame": "cherry", "mat": "black"},
-    "1020.6": {"type": "trio_10x20", "frame": "black", "mat": "creme"},
-    "1020.7": {"type": "trio_10x20", "frame": "cherry", "mat": "creme"},
-}
-
 def map_product_codes_to_items(
     extracted_codes: List[str], image_codes: List[str], ocr_description: str
 ) -> List[Dict]:
@@ -286,69 +235,6 @@ def determine_frame_requirements_from_items(order_items: List[Dict]) -> Dict[str
     frame_requirements["10x13"] = min(frame_requirements["10x13"], 1)  # Max 1 frame for 10x13
     
     return frame_requirements
-
-
-def rows_to_order_items(rows, frames, retouch_imgs=None):
-    """Convert ParsedOrder rows to order items using PRODUCTS_TSV."""
-    from app.order_utils import frames_to_counts, apply_frames_to_items
-
-    retouch_set = set(retouch_imgs or [])
-    regular_items = []
-    complimentary = []
-
-    for row in rows:
-        if not row.code:
-            continue
-        spec = PRODUCTS_TSV.get(row.code)
-        if not spec:
-            print(f"   ⚠️ Unknown product code in TSV: {row.code}")
-            continue
-
-        qty = row.qty or 1
-        for _ in range(qty):
-            base = {
-                'product_code': row.code,
-                'image_codes': row.imgs,
-                'artist_series': bool(row.artist_series),
-                'finish': spec.get('finish', 'BASIC'),
-                'retouch': bool(set(row.imgs) & retouch_set),
-            }
-
-            t = spec['type']
-            if t.startswith('trio_'):
-                imgs = (row.imgs + ["", "", ""])[:3]
-                item = {
-                    **base,
-                    'size_category': 'trio_composite',
-                    'size': t.split('_')[1],
-                    'frame_color': spec.get('frame', '').capitalize(),
-                    'matte_color': spec.get('mat', '').capitalize(),
-                    'image_codes': imgs,
-                }
-                regular_items.append(item)
-            elif t == 'wallet_sheet':
-                item = {**base, 'size_category': 'WALLET8', 'size': 'wallet'}
-                regular_items.append(item)
-            elif t == '3x5_sheet':
-                item = {**base, 'size_category': 'SHEET3x5', 'size': '3.5x5'}
-                regular_items.append(item)
-            elif t == '5x7_pair':
-                item = {**base, 'size_category': 'ALL_5x7', 'size': '5x7'}
-                regular_items.append(item)
-            elif t == 'complimentary_8x10':
-                item = {**base, 'size_category': 'large_print', 'size': '8x10', 'complimentary': True}
-                complimentary.append(item)
-            elif t == 'large_print':
-                item = {**base, 'size_category': 'large_print', 'size': spec.get('size', '')}
-                regular_items.append(item)
-
-    items = regular_items + complimentary
-
-    if frames:
-        counts = frames_to_counts(frames)
-        items = apply_frames_to_items(items, counts)
-
-    return items
 
 def test_ocr_based_preview_fixed(screenshot_path: str):
     """Test with our working OCRExtractor and precise bounding boxes"""
