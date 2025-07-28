@@ -73,15 +73,24 @@ FRAMES_TABLE = (953, 593, 1385, 700)
 RETOUCH_BOX = (1250, 250, 1370, 380)
 
 # ----- Row grid tuning -----
+# ---- Tunable row grid constants ----
+# how many visible rows are expected
 ROW_COUNT_DEFAULT = 18
+# Y start of the table region in the screenshot
 ORDER_ROI_TOP = 460
+# Y end of the table region (or negative offset from bottom)
 ORDER_ROI_BOTTOM = 900
+# A few pixels of slack above/below each row
 ROW_EXTRA_PAD = 6
+# Per-row manual nudges: row_index -> (dy_top, dy_bot)
+ROW_MANUAL_OFFSETS: dict[int, tuple[int, int]] = {}
 
-# Optional manual tweaks: row_index -> (dy_top, dy_bot)
-ROW_MANUAL_OFFSETS = {
-    # Example: 3: (-4, +8),
-}
+# Optional: allow overriding from environment for quick tweaking
+import os
+ROW_COUNT_DEFAULT = int(os.getenv("OCR_ROW_COUNT", ROW_COUNT_DEFAULT))
+ORDER_ROI_TOP = int(os.getenv("OCR_ROI_TOP", ORDER_ROI_TOP))
+ORDER_ROI_BOTTOM = int(os.getenv("OCR_ROI_BOTTOM", ORDER_ROI_BOTTOM))
+ROW_EXTRA_PAD = int(os.getenv("OCR_ROW_PAD", ROW_EXTRA_PAD))
 
 
 def build_row_bboxes(img_h: int) -> List[Tuple[int, int, Optional[int], int]]:
@@ -127,12 +136,15 @@ RETOUCH_KEYS = ["retouch", "softens facial lines", "whitens teeth", "blends skin
 ARTIST_KEYS = ["artist brush", "artist series"]
 
 
+# Safer row parser: qty at start, code next, imgs block is last comma-separated codes
 ROW_RE = re.compile(
-    r"^\s*(?P<qty>\d+)\s+"
-    r"(?P<code>\d+(?:\.\d+)?)\s+"
-    r"(?P<desc>.+?)"
-    r"(?:\s+(?P<imgs>(?:\d{3,4}(?:\s*,\s*\d{3,4})*)))?\s*$",
-    re.I,
+    r"""^\s*
+        (?P<qty>\d+)\s+                             # qty
+        (?P<code>\d{3,4}(?:\.\d+)?)\s+              # product code
+        (?P<desc>.*?)                               # description (lazy)
+        (?:\s+(?P<imgs>(?:\d{3,4})(?:\s*,\s*\d{3,4})*))?\s*$  # optional imgs
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )
 
 
@@ -256,6 +268,7 @@ class OCRExtractor:
 
         # Load product codes for fuzzy matching
         self._load_product_codes()
+        # Keep TRUE by default to avoid column merging heuristics
         self.single_line_mode = single_line_mode
 
         logger.info(f"OCR Extractor initialized - UI Version: {self.ui_version}")
@@ -347,6 +360,7 @@ class OCRExtractor:
                 rows = self._ocr_rows_full_line(pil_img)
                 ocr_results = None
             else:
+                # Kept for dev/testing but shouldn't run in production
                 ocr_results = self._run_column_isolated_ocr(base_image, work_dir)
 
             # Additional ROIs for frames and retouch sections
@@ -432,12 +446,22 @@ class OCRExtractor:
         for idx, (x1, y1, x2, y2) in enumerate(boxes):
             crop = img.crop((x1, y1, x2 or img.width, y2))
             ocr_lines = win_ocr(crop)
-            text = " ".join(txt for (_, txt) in ocr_lines).strip()
+            # Concatenate lines in reading order
+            text = " ".join(
+                txt for (_, txt) in sorted(ocr_lines, key=lambda t: t[0][0])
+            ).strip()
             if not text:
                 continue
             m = ROW_RE.match(text)
             if not m:
-                logger.debug("Row %d unparsable: %r", idx, text)
+                logger.debug(f"Row {idx} unparsable: {text!r}")
+                rows.append(
+                    RowRecord(
+                        desc=text,
+                        y_position=(y1 + y2) / 2,
+                        warnings=["unparsable row"],
+                    )
+                )
                 continue
             rows.append(
                 RowRecord(
@@ -804,6 +828,7 @@ class OCRExtractor:
             # Skip completely empty rows
             if not any([row.qty, row.code, row.desc, row.imgs]):
                 continue
+            # Guarantee imgs are exactly what that row had (no global fallbacks)
 
             # Validate composite products have exactly 3 image codes
             if row.code in ["510.3", "1020.5"]:  # Trio products
