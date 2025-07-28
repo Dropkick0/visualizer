@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set
 from dataclasses import dataclass
 from loguru import logger
+from PIL import Image, ImageOps
 
 try:
     import winocr
@@ -75,23 +76,19 @@ FRAMES_TABLE = (953, 593, 1385, 700)
 RETOUCH_BOX = (1250, 250, 1370, 380)
 
 # ---- Tunable row grid constants ----
-ROW_COUNT_DEFAULT = 18
-ORDER_ROI_TOP = 485
-ORDER_ROI_BOTTOM = 891
-ORDER_ROI_LEFT = 31
-ORDER_ROI_RIGHT = 950
-ROW_EXTRA_PAD = 0
-# row_index -> (dy_top, dy_bot)
-ROW_MANUAL_OFFSETS: dict[int, tuple[int, int]] = {}
-
-# Optional: allow overriding from env for quick tweaking
-import os
-ROW_COUNT_DEFAULT = int(os.getenv("OCR_ROW_COUNT", ROW_COUNT_DEFAULT))
-ORDER_ROI_TOP = int(os.getenv("OCR_ROI_TOP", ORDER_ROI_TOP))
-ORDER_ROI_BOTTOM = int(os.getenv("OCR_ROI_BOTTOM", ORDER_ROI_BOTTOM))
-ORDER_ROI_LEFT = int(os.getenv("OCR_ROI_LEFT", ORDER_ROI_LEFT))
-ORDER_ROI_RIGHT = int(os.getenv("OCR_ROI_RIGHT", ORDER_ROI_RIGHT))
-ROW_EXTRA_PAD = int(os.getenv("OCR_ROW_PAD", ROW_EXTRA_PAD))
+from .ocr_constants import (
+    ROW_SCALE_X,
+    ROW_SCALE_Y,
+    ROW_MIN_WIDTH,
+    ROW_SIDE_PAD,
+    ROW_COUNT_DEFAULT,
+    ORDER_ROI_TOP,
+    ORDER_ROI_BOTTOM,
+    ORDER_ROI_LEFT,
+    ORDER_ROI_RIGHT,
+    ROW_EXTRA_PAD,
+    ROW_MANUAL_OFFSETS,
+)
 
 
 def build_row_bboxes(img_w: int, img_h: int) -> List[tuple[int, int, int, int]]:
@@ -111,6 +108,17 @@ def build_row_bboxes(img_w: int, img_h: int) -> List[tuple[int, int, int, int]]:
         y2 = min(img_h, y2 + dy_b + ROW_EXTRA_PAD)
         out.append((x1, y1, x2, y2))
     return out
+
+
+def _prep_row_for_winocr(pil_crop: Image.Image) -> Image.Image:
+    """Upscale and pad a row image before passing to Windows OCR."""
+    w, h = pil_crop.size
+    new_w = max(int(w * ROW_SCALE_X), ROW_MIN_WIDTH)
+    new_h = int(h * ROW_SCALE_Y)
+    big = pil_crop.resize((int(w * ROW_SCALE_X), new_h), Image.BICUBIC)
+    canvas = Image.new("RGB", (new_w + ROW_SIDE_PAD * 2, new_h + 8), "white")
+    canvas.paste(big, (ROW_SIDE_PAD, 4))
+    return canvas
 
 
 # Regular expression patterns for parsing the extra tables
@@ -459,11 +467,21 @@ class OCRExtractor:
 
         for idx, (x1, y1, x2, y2) in enumerate(boxes):
             crop = img.crop((x1, y1, x2, y2))
-            ocr_lines = win_ocr(crop)
-            raw = " ".join(t for (_, t) in sorted(ocr_lines, key=lambda t: t[0][0])).strip()
-            raw = re.sub(r"\s{2,}", " ", raw)
+            inflated = _prep_row_for_winocr(crop)
+            ocr_lines = win_ocr(inflated)
+            raw_lines = [t for (_, t) in sorted(ocr_lines, key=lambda t: t[0][0])]
+            raw = " ".join(raw_lines).strip()
+            if not raw:
+                # Try again with a binarized image
+                bw = ImageOps.grayscale(inflated).point(lambda x: 0 if x < 128 else 255, mode="1")
+                ocr_lines = win_ocr(bw.convert("RGB"))
+                raw_lines = [t for (_, t) in sorted(ocr_lines, key=lambda t: t[0][0])]
+                raw = " ".join(raw_lines).strip()
 
             crop.save(debug_dir / f"row_{idx:02d}.png")
+            inflated.save(debug_dir / f"row_{idx:02d}_big.png")
+            with open(debug_dir / f"row_{idx:02d}_raw.txt", "w", encoding="utf-8") as f:
+                f.write("\n".join(raw_lines) or "<EMPTY>")
             with open(debug_dir / f"row_{idx:02d}.txt", "w", encoding="utf-8") as f:
                 f.write(raw or "<EMPTY>")
 
