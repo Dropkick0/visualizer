@@ -100,12 +100,6 @@ def check_production_requirements():
         if not os.environ.get(var):
             errors.append(f"Environment variable {var} is required")
     
-    # Check Tesseract installation
-    try:
-        import pytesseract
-        pytesseract.get_tesseract_version()
-    except Exception:
-        errors.append("Tesseract OCR not installed or not accessible")
     
     # Check write permissions
     temp_folder = os.environ.get('TEMP_FOLDER', '/tmp/portrait_preview')
