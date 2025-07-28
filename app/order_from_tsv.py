@@ -9,8 +9,8 @@ PRODUCTS: Dict[str, Dict] = {
     "001": {"type": "complimentary_8x10", "finish": "BASIC"},
     "002": {"type": "complimentary_8x10", "finish": "PRESTIGE"},
     "003": {"type": "complimentary_8x10", "finish": "KEEPSAKE"},
-    "200": {"type": "wallet_sheet", "finish": "BASIC"},
-    "350": {"type": "3x5_sheet", "finish": "BASIC"},
+    "200": {"type": "wallet_sheet", "finish": "BASIC", "group": "WALLET8"},
+    "350": {"type": "3x5_sheet", "finish": "BASIC", "group": "SHEET3x5"},
     "510": {"type": "trio_5x10", "mat": "creme", "frame": "cherry"},
     "510.1": {"type": "trio_5x10", "mat": "white", "frame": "cherry"},
     "510.2": {"type": "trio_5x10", "mat": "gray", "frame": "cherry"},
@@ -19,9 +19,9 @@ PRODUCTS: Dict[str, Dict] = {
     "511.1": {"type": "trio_5x10", "mat": "white", "frame": "black"},
     "511.2": {"type": "trio_5x10", "mat": "gray", "frame": "black"},
     "511.3": {"type": "trio_5x10", "mat": "black", "frame": "black"},
-    "570": {"type": "5x7_pair", "finish": "BASIC"},
-    "571": {"type": "5x7_pair", "finish": "PRESTIGE"},
-    "572": {"type": "5x7_pair", "finish": "KEEPSAKE"},
+    "570": {"type": "5x7_pair", "finish": "BASIC", "group": "ALL_5x7"},
+    "571": {"type": "5x7_pair", "finish": "PRESTIGE", "group": "ALL_5x7"},
+    "572": {"type": "5x7_pair", "finish": "KEEPSAKE", "group": "ALL_5x7"},
     "810": {"type": "8x10", "finish": "BASIC"},
     "811": {"type": "8x10", "finish": "PRESTIGE"},
     "812": {"type": "8x10", "finish": "KEEPSAKE"},
@@ -77,15 +77,16 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
             }
             t = meta["type"]
             if t.startswith("trio_"):
-                size = t.split("_")[1]
-                imgs = (row.imgs + ["", "", ""])[:3]
+                size = t.split("_")[1]     # "10x20" or "5x10"
+                imgs = (row.imgs + ["", "", ""])[:3]  # preserve L,C,R order
                 item = {
                     **base,
                     "product_slug": f"trio_{size}_composite",
                     "size_category": "trio_composite",
                     "template": "trio_horizontal",
                     "count_images": 3,
-                    "image_codes": imgs,
+                    "image_codes": imgs,          # [L, C, R]
+                    "retouch_flags": [img in retouch_set for img in imgs],
                     "frame_color": meta.get("frame", ""),
                     "matte_color": meta.get("mat", ""),
                     "display_name": f"Trio {size} ({meta.get('frame','')})",
@@ -94,8 +95,9 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
             elif t == "wallet_sheet":
                 item = {
                     **base,
-                    "product_slug": "200_sheet",
+                    "product_slug": "WALLET8",
                     "size_category": "wallet_sheet",
+                    "group_hint": "WALLET8",
                     "sheet_type": "2x2",
                     "display_name": "Wallet Sheet",
                 }
@@ -103,8 +105,9 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
             elif t == "3x5_sheet":
                 item = {
                     **base,
-                    "product_slug": "350_sheet",
+                    "product_slug": "SHEET3x5",
                     "size_category": "small_sheet",
+                    "group_hint": "SHEET3x5",
                     "sheet_type": "2x2",
                     "display_name": "3.5x5 Sheet",
                 }
@@ -112,8 +115,9 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
             elif t == "5x7_pair":
                 item = {
                     **base,
-                    "product_slug": "570_sheet",
+                    "product_slug": "ALL_5x7",
                     "size_category": "medium_sheet",
+                    "group_hint": "ALL_5x7",
                     "sheet_type": "landscape_2x1",
                     "display_name": "5x7 Pair",
                 }
@@ -122,18 +126,18 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                 item = {
                     **base,
                     "product_slug": f"8x10_{base['finish'].lower()}_{row.code}",
-                    "size_category": "large",
+                    "size_category": "large_print",
                     "complimentary": True,
                     "display_name": "Complimentary 8x10",
                 }
                 items.append(item)
             else:
                 # Large prints
-                size = t
+                size = t  # e.g. "10x13", "20x24"
                 item = {
                     **base,
                     "product_slug": f"{size}_{base['finish'].lower()}_{row.code}",
-                    "size_category": "large",
+                    "size_category": "large_print",
                     "display_name": f"{size} {base['finish'].title()}",
                 }
                 items.append(item)
@@ -143,7 +147,7 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
     apply_frames_to_items(items, counts)
 
     # ensure complimentary last in large print section
-    large = [i for i in items if i.get("size_category") == "large"]
-    others = [i for i in items if i.get("size_category") != "large"]
+    large = [i for i in items if i.get("size_category") == "large_print"]
+    others = [i for i in items if i.get("size_category") != "large_print"]
     sorted_large = _sort_large_print(large)
     return others + sorted_large
