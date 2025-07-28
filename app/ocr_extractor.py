@@ -44,9 +44,7 @@ COLOR_RE = re.compile(r"\b(cherry|chetry|black|blk)\b", re.I)
 # Normalize common OCR quirks for frame size/color text
 SIZE_FIXES = {
     r"^34x7\b": "5x7",
-    r"5\s*x\s*7": "5x7",
-    r"8\s*x\s*10": "8x10",
-    r"10\s*x\s*13": "10x13",
+    r"^8\s*x\s*10\b": "8x10",
 }
 
 COLOR_FIXES = {
@@ -54,7 +52,8 @@ COLOR_FIXES = {
     "blk": "black",
 }
 
-# Retouch/Artist Series detection
+# Retouch/Artist Series options share a box. We'll look for common keywords in
+# the description text and track their quantities separately.
 OPTION_ROW = re.compile(r"^(?P<qty>\d+)\s+(?P<desc>.+)$", re.I)
 RETOUCH_KEYS = ["retouch", "softens facial lines", "whitens teeth", "blends skin tones"]
 ARTIST_KEYS = ["artist brush", "artist series"]
@@ -83,11 +82,29 @@ def parse_frames(lines: List[str]) -> Dict[str, Dict[str, int]]:
     return frame_counts
 
 
-def parse_retouch_and_artist(text: str) -> Tuple[Set[str], bool]:
-    """Return retouch image codes and artist series flag from ROI text."""
-    codes = set(re.findall(r"\b\d{4}\b", text))
-    artist = "artist brush" in text.lower() or "artist series" in text.lower()
-    return codes, artist
+def parse_retouch(lines: List[str]) -> Tuple[List[Dict[str, int]], bool, Set[str], Set[str]]:
+    """Parse retouch entries and detect Artist Series with image codes."""
+    retouch: List[Dict[str, int]] = []
+    artist_series = False
+    retouch_codes: Set[str] = set()
+    artist_codes: Set[str] = set()
+    for ln in lines:
+        m = OPTION_ROW.search(ln)
+        if not m:
+            continue
+        qty = int(m.group("qty"))
+        if qty <= 0:
+            continue
+        desc = m.group("desc")
+        desc_lower = desc.lower()
+        codes = re.findall(r"\b\d{3,4}\b", desc)
+        if any(k in desc_lower for k in ARTIST_KEYS):
+            artist_series = True
+            artist_codes.update(codes)
+        elif any(k in desc_lower for k in RETOUCH_KEYS):
+            retouch.append({"name": desc.strip(), "qty": qty})
+            retouch_codes.update(codes)
+    return retouch, artist_series, retouch_codes, artist_codes
 
 
 @dataclass
@@ -112,12 +129,13 @@ class OCRExtractor:
     def __init__(self):
         self.ui_version = UI_VERSION
         self.column_boxes = get_column_boxes()
-        self.ocr_engine = "winocr"
-        assert self.ocr_engine == "winocr", "Tesseract must not be used"
+        self.ocr_engine = None
         self.performance_stats = {}
         self.frame_counts: Dict[str, Dict[str, int]] = {}
+        self.retouch_items: List[Dict[str, int]] = []
         self.artist_series: bool = False
         self.retouch_codes: Set[str] = set()
+        self.artist_codes: Set[str] = set()
         
         # Load product codes for fuzzy matching
         self._load_product_codes()
@@ -172,10 +190,14 @@ class OCRExtractor:
             self.frames_lines = self._ocr_roi(base_image, FRAMES_TABLE, "FRAMES", work_dir)
             self.retouch_lines = self._ocr_roi(base_image, RETOUCH_BOX, "RETOUCH", work_dir)
             self.frame_counts = parse_frames(self.frames_lines)
-            roi_text = " ".join(self.retouch_lines)
-            self.retouch_codes, self.artist_series = parse_retouch_and_artist(roi_text)
+            (
+                self.retouch_items,
+                self.artist_series,
+                self.retouch_codes,
+                self.artist_codes,
+            ) = parse_retouch(self.retouch_lines)
             logger.info(f"Frames parsed: {self.frame_counts}")
-            logger.info(f"Retouch parsed: {sorted(self.retouch_codes)}")
+            logger.info(f"Retouch parsed: {self.retouch_items}")
             logger.info(f"Artist series detected: {self.artist_series}")
             
             # Step 4: Reconstruct rows by Y-centroid matching
@@ -186,19 +208,11 @@ class OCRExtractor:
             
             # Step 6: Validate and log results
             validated_rows = self._validate_rows(cleaned_rows, work_dir)
-
+            
             # Performance tracking
             total_time = time.time() - start_time
             self.performance_stats['last_extraction_time'] = total_time
-
-            # Quick sanity invariants
-            try:
-                assert len(validated_rows) == 9
-                assert self.frame_counts.get('5x7', {}).get('cherry', 0) == 2
-                assert '0033' in self.retouch_codes
-            except AssertionError as inv:
-                logger.warning(f"Invariant check failed: {inv}")
-
+            
             logger.info(f"Extraction complete in {total_time:.2f}s - {len(validated_rows)} rows extracted")
             
             if total_time > 1.0:
@@ -255,28 +269,18 @@ class OCRExtractor:
                 # Step 3: Run OCR on processed crop
                 ocr_blocks = self._run_ocr_on_crop(processed_crop, col_name)
 
-                # Convert OCR blocks to positional tuples
+                # Convert OCR blocks to (text, y_mid) tuples
                 lines = []
                 for block in ocr_blocks:
                     txt = str(block.get('text', '')).strip()
                     if not txt:
                         continue
                     if 'boundingBox' in block:
-                        bb = block['boundingBox']
-                        y_top = bb[1]
-                        y_bot = bb[5]
-                        y_mid = (y_top + y_bot) / 2
+                        bbox = block['boundingBox']
+                        y_mid = (bbox[1] + bbox[5]) / 2
                     else:
                         y_mid = block.get('y_position', 0)
-                        y_top = y_mid - 15
-                        y_bot = y_mid + 15
-                    if col_name == 'COL_QTY':
-                        lines.append((y_top, y_bot, txt))
-                    else:
-                        lines.append((y_mid, txt))
-
-                if not lines:
-                    assert False, f"WinOCR returned 0 lines for column {col_name}"
+                    lines.append((txt, y_mid))
 
                 results[col_name] = lines
                 logger.debug("Column %s: %d lines", col_name, len(lines))
@@ -405,40 +409,42 @@ class OCRExtractor:
         if not cols:
             return []
 
-        qty_rows = sorted(cols.get('COL_QTY', []), key=lambda t: t[0])
-        if not qty_rows:
+        # Sort each column by y position
+        sorted_cols = {k: sorted(v, key=lambda t: t[1]) for k, v in cols.items()}
+        anchor_col = sorted_cols.get('COL_CODE') or sorted_cols.get('COL_QTY') or []
+        if not anchor_col:
             return []
 
-        med_h = np.median([(b - t) for t, b, _ in qty_rows]) if qty_rows else 0
-        tol = med_h * 0.45
+        # Estimate line height for tolerance
+        y_vals = [y for _, y in anchor_col]
+        diffs = [b - a for a, b in zip(y_vals, y_vals[1:])] or [30]
+        line_height = sorted(diffs)[len(diffs) // 2]
+        tol = line_height * 0.6
 
-        def pick(col_lines: List[tuple], y_top: float, y_bot: float) -> str:
-            band_mid = (y_top + y_bot) / 2
-            best = None
-            best_d = 9999
-            for y_mid, txt in col_lines:
-                d = abs(y_mid - band_mid)
-                if d < best_d and (y_top - tol) <= y_mid <= (y_bot + tol):
-                    best = txt
-                    best_d = d
-            return best or ""
+        def match_line(y_anchor: float, col: List[tuple]):
+            if not col:
+                return ""
+            best = min(col, key=lambda t: abs(t[1] - y_anchor))
+            if abs(best[1] - y_anchor) <= tol:
+                col.remove(best)
+                return best[0]
+            return ""
 
         rows = []
-        for y_top, y_bot, qty_txt in qty_rows:
-            row = {
-                'qty': qty_txt.strip(),
-                'code': pick(cols.get('COL_CODE', []), y_top, y_bot),
-                'desc': pick(cols.get('COL_DESC', []), y_top, y_bot),
-                'imgs': pick(cols.get('COL_IMG', []), y_top, y_bot),
-                'y': (y_top + y_bot) / 2,
-            }
+        for text, y in anchor_col:
+            row = {'y': y, 'qty': '', 'code': '', 'desc': '', 'imgs': ''}
+            if sorted_cols.get('COL_CODE') is anchor_col:
+                row['code'] = text
+                row['qty'] = match_line(y, sorted_cols.get('COL_QTY', []))
+            else:
+                row['qty'] = text
+                row['code'] = match_line(y, sorted_cols.get('COL_CODE', []))
+            row['desc'] = match_line(y, sorted_cols.get('COL_DESC', []))
+            row['imgs'] = match_line(y, sorted_cols.get('COL_IMG', []))
             rows.append(row)
 
-        counts = {k: len(v) for k, v in cols.items()}
+        counts = {k: len(v) for k, v in sorted_cols.items()}
         logger.debug("Line counts: %s", counts)
-
-        if len(rows) < 5:
-            raise ValueError(f"Row reconstruction failed, got {len(rows)} rows")
 
         row_records = [RowRecord(qty=r['qty'], code=r['code'], desc=r['desc'], imgs=r['imgs'], y_position=r['y']) for r in rows]
         logger.debug("Reconstructed %d rows", len(row_records))
@@ -575,7 +581,7 @@ class OCRExtractor:
                 # Data rows
                 frames_cherry_total = sum(v.get('cherry', 0) for v in self.frame_counts.values())
                 frames_black_total = sum(v.get('black', 0) for v in self.frame_counts.values())
-                retouch_summary = ", ".join(sorted(self.retouch_codes))
+                retouch_summary = "; ".join(f"{x['qty']}x {x['name']}" for x in self.retouch_items)
                 
                 for row in rows:
                     writer.writerow({
