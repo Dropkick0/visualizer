@@ -54,6 +54,8 @@ PRODUCT_SPECS = {
 def expand_row_to_items(row: Dict, product_specs: Dict[str, Dict] = PRODUCT_SPECS) -> List[Dict]:
     """Expand a row definition into individual items preserving image order."""
     imgs = [c.strip() for c in row.get('imgs', '').split(',') if c.strip()]
+    if not imgs:
+        return []
     qty = int(row.get('qty', 0))
     code = row.get('code')
     spec = product_specs.get(code, {})
