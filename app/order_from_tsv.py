@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional
 
 from .fm_dump_parser import RowTSV, FrameReq, ParsedOrder
-from .order_utils import apply_frames_to_items_from_meta, explode_5x7_pairs_for_frames
+from .order_utils import apply_frames_to_items_from_meta, normalize_5x7_for_frames
 
 # Product metadata mapping based on POINTS SHEET & CODES.csv
 # Only the subset relevant for preview generation is included.
@@ -182,10 +182,8 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                 }
                 items.append(item)
 
-    # split 5x7 pair sheets into singles if frames are requested
-    items = explode_5x7_pairs_for_frames(items, frames, FRAME_META)
-
-    # apply frames using metadata
+    # normalize 5x7 pairs and apply frames
+    items = normalize_5x7_for_frames(items, frames, FRAME_META)
     apply_frames_to_items_from_meta(items, frames, FRAME_META)
 
     # ensure complimentary last in large print section
