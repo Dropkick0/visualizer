@@ -1,7 +1,7 @@
 from typing import List, Dict
 
 from .fm_dump_parser import RowTSV, FrameReq
-from .order_utils import apply_frames_to_items, frames_to_counts
+from .order_utils import apply_frames_to_items_from_meta
 
 # Product metadata mapping based on POINTS SHEET & CODES.csv
 # Only the subset relevant for preview generation is included.
@@ -47,6 +47,20 @@ PRODUCTS: Dict[str, Dict] = {
     "2026": {"type": "20x24", "finish": "KEEPSAKE"},
 }
 
+# Mapping of frame numbers to size/color metadata
+FRAME_META: Dict[str, Dict[str, str]] = {
+    "229": {"size": "5x7", "color": "cherry"},
+    "230": {"size": "5x7", "color": "black"},
+    "231": {"size": "8x10", "color": "cherry"},
+    "232": {"size": "8x10", "color": "black"},
+    "233": {"size": "10x13", "color": "cherry"},
+    "234": {"size": "10x13", "color": "black"},
+    "235": {"size": "16x20", "color": "cherry"},
+    "236": {"size": "16x20", "color": "black"},
+    "237": {"size": "20x24", "color": "cherry"},
+    "238": {"size": "20x24", "color": "black"},
+}
+
 
 def _sort_large_print(items: List[Dict]) -> List[Dict]:
     normal = [i for i in items if not i.get("complimentary")]
@@ -88,9 +102,10 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                     "count_images": 3,
                     "image_codes": imgs,
                     "retouch_flags": [img in retouch_set for img in imgs],
-                    "frame_color": meta.get("frame", ""),
-                    "matte_color": meta.get("mat", ""),
-                    "display_name": f"Trio {size} ({meta.get('frame','')})",
+                    "artist_flags": [bool(row.artist_series)] * 3,
+                    "frame_color": meta.get("frame", "").capitalize(),
+                    "matte_color": meta.get("mat", "").capitalize(),
+                    "display_name": f"Trio {size} ({meta.get('frame','').capitalize()})",
                 }
                 items.append(item)
             elif t == "wallet_sheet":
@@ -101,7 +116,7 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                     "size_category": "wallet_sheet",
                     "group_hint": "WALLET8",
                     "sheet_type": "2x2",
-                    "display_name": "Wallet Sheet",
+                    "display_name": f"Wallet Sheet ({base['finish'].title()})",
                 }
                 items.append(item)
             elif t == "3x5_sheet":
@@ -112,7 +127,7 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                     "size_category": "small_sheet",
                     "group_hint": "SHEET3x5",
                     "sheet_type": "2x2",
-                    "display_name": "3.5x5 Sheet",
+                    "display_name": f"3.5x5 Sheet ({base['finish'].title()})",
                 }
                 items.append(item)
             elif t == "5x7_pair":
@@ -123,7 +138,7 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                     "size_category": "medium_sheet",
                     "group_hint": "ALL_5x7",
                     "sheet_type": "landscape_2x1",
-                    "display_name": "5x7 Pair",
+                    "display_name": f"5x7 Pair ({base['finish'].title()})",
                 }
                 items.append(item)
             elif t == "complimentary_8x10":
@@ -132,7 +147,7 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                     "product_slug": f"8x10_{base['finish'].lower()}_{row.code}",
                     "size_category": "large_print",
                     "complimentary": True,
-                    "display_name": "Complimentary 8x10",
+                    "display_name": f"Complimentary 8x10 ({base['finish'].title()})",
                 }
                 items.append(item)
             else:
@@ -146,9 +161,8 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                 }
                 items.append(item)
 
-    # apply frames
-    counts = frames_to_counts(frames)
-    apply_frames_to_items(items, counts)
+    # apply frames using metadata
+    apply_frames_to_items_from_meta(items, frames, FRAME_META)
 
     # ensure complimentary last in large print section
     large = [i for i in items if i.get("size_category") == "large_print"]
