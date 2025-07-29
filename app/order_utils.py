@@ -1,5 +1,6 @@
 from typing import Dict, List
 import re
+from copy import deepcopy
 
 from .fm_dump_parser import RowTSV as Row, FrameReq as Frame
 from .frame_overlay import FrameSpec
@@ -155,46 +156,68 @@ def apply_frames_to_items_from_meta(items: List[Dict], frame_reqs: List[Frame], 
     return items
 
 
-def explode_5x7_pairs_for_frames(items: List[Dict], frame_reqs: List[Frame], frame_meta: Dict[str, Dict[str, str]]):
-    """Split 5x7 pair sheets into single prints if frames are requested."""
-    needed = 0
+def normalize_5x7_for_frames(items: List[Dict], frame_reqs: List[Frame], frame_meta: Dict[str, Dict[str, str]]) -> List[Dict]:
+    """Convert 5x7 pairs to singles, assign frames, and re-pack leftovers into pairs."""
+
+    frames_needed = 0
     for fr in frame_reqs:
         info = frame_meta.get(fr.frame_no)
-        if info and info.get("size") == "5x7":
-            needed += fr.qty or 0
+        if info and info["size"] == "5x7":
+            frames_needed += fr.qty or 0
 
-    if needed == 0:
+    if frames_needed == 0:
         return items
 
-    new_items: List[Dict] = []
+    singles: List[Dict] = []
+    others: List[Dict] = []
+
+    # explode all 5x7 pairs into singles
     for it in items:
-        if (
-            it.get("product_slug") == "ALL_5x7"
-            and it.get("sheet_type") == "landscape_2x1"
-            and needed > 0
-        ):
-            imgs = it.get("image_codes", [])
+        if it.get("group_hint") == "ALL_5x7" and it.get("sheet_type") == "landscape_2x1":
+            img = it["image_codes"][0] if it.get("image_codes") else ""
             for _ in range(2):
-                if needed <= 0:
-                    break
-                single = {
-                    **it,
-                    "product_code": "570_individual",
-                    "sheet_type": "single",
-                    "size_category": "medium_print",
-                    "display_name": f"5x7 ({it.get('finish', '').title()})",
-                    "image_codes": [imgs[0] if imgs else ""],
-                    "framed": False,
-                    "frame_color": "",
-                    "has_frame": False,
-                }
-                new_items.append(single)
-                needed -= 1
-
-            if needed <= 0:
-                continue
-            new_items.append(it)
+                s = deepcopy(it)
+                s["product_code"] = "570_individual"
+                s["sheet_type"] = "single"
+                s["display_name"] = f"5x7 ({s['finish'].title()})"
+                s["quantity"] = 1
+                s["image_codes"] = [img]
+                s.pop("pair_id", None)
+                singles.append(s)
         else:
-            new_items.append(it)
+            others.append(it)
 
-    return new_items
+    # assign frames to first F singles
+    for s in singles:
+        if frames_needed <= 0:
+            break
+        if not s.get("framed"):
+            s["framed"] = True
+            for fr in frame_reqs:
+                info = frame_meta.get(fr.frame_no)
+                if not info or info["size"] != "5x7":
+                    continue
+                if fr.qty and fr.qty > 0:
+                    s["frame_color"] = info["color"]
+                    fr.qty -= 1
+                    frames_needed -= 1
+                    break
+
+    framed_singles = [s for s in singles if s.get("framed")]
+    unframed_singles = [s for s in singles if not s.get("framed")]
+
+    repacked_pairs: List[Dict] = []
+    while len(unframed_singles) >= 2:
+        a = unframed_singles.pop(0)
+        b = unframed_singles.pop(0)
+        pair = deepcopy(a)
+        pair["product_code"] = "570_sheet"
+        pair["sheet_type"] = "landscape_2x1"
+        pair["display_name"] = f"5x7 Pair ({pair['finish'].title()})"
+        pair["image_codes"] = [a["image_codes"][0]]
+        pair.pop("framed", None)
+        pair.pop("frame_color", None)
+        repacked_pairs.append(pair)
+
+    final_items = others + framed_singles + repacked_pairs + unframed_singles
+    return final_items
