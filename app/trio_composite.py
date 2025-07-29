@@ -11,14 +11,6 @@ from PIL import Image, ImageDraw
 from loguru import logger
 
 
-def trio_template_filename(size: str, frame: str, matte: str) -> str:
-    """Return composite filename based on parameters."""
-    size_label = "5x10" if size == "5x10" else "10x20"
-    frame_title = frame.capitalize()
-    matte_title = matte.capitalize()
-    return f"Frame {frame_title} - {matte_title} {size_label} 3 Image.jpg"
-
-
 def is_trio_product(product: Dict) -> bool:
     """Check if a product is a trio product"""
     slug = product.get('slug', '')

@@ -11,7 +11,7 @@ from loguru import logger
 import math
 
 # Import trio composite functionality
-from .trio_composite import TrioCompositeGenerator, is_trio_product, trio_template_filename
+from .trio_composite import TrioCompositeGenerator, is_trio_product
 
 # Import frame overlay functionality
 from .frame_overlay import (
@@ -1141,23 +1141,21 @@ class EnhancedPortraitPreviewGenerator:
                         customer_images.append(None)
             
             # Extract trio details
-            frame_color = item.get('frame_color', 'Black').capitalize()
-            matte_color = item.get('matte_color', 'White').capitalize()
-
-            # Determine composite size from product code
-            size_label = "10x20" if "1020" in item.get('product_code', '') else "5x10"
-
-            template_name = trio_template_filename(size_label, frame_color, matte_color)
-            logger.debug(
-                f"Generating composite: {template_name}"
-            )
-
-            # Generate the composite using the correct size for file lookup
+            frame_color = item.get('frame_color', 'Black')
+            matte_color = item.get('matte_color', 'White')
+            
+            # FIX: Always use "5x10" for file lookup - larger composites just scale the same base file
+            # All composite files are named "5x10" regardless of target size
+            base_size = "5x10"
+            
+            logger.debug(f"Generating composite: {base_size}, frame={frame_color}, matte={matte_color}")
+            
+            # Generate the composite using the base size for file lookup
             composite_image = self.trio_generator.create_composite(
                 customer_images=customer_images,
                 frame_color=frame_color,
                 matte_color=matte_color,
-                size=size_label
+                size=base_size  # Always use "5x10" for file lookup
             )
             
             if composite_image:
