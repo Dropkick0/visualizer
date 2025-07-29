@@ -1118,20 +1118,27 @@ class EnhancedPortraitPreviewGenerator:
         """Binary search the tightest PPI that fits within the canvas."""
         LOW, HIGH = 5.0, 140.0
 
-        def try_ppi(ppi: float) -> Tuple[List[Dict], float, float]:
+        def try_ppi(ppi: float) -> Tuple[List[Dict], float]:
             layout = self._layout_with_ppi(groups, ppi)
+
+            # Overflow in Y / X
             max_bottom = max((i['y'] + i['height'] for i in layout), default=0)
             max_right = max((i['x'] + i['width'] for i in layout), default=0)
             v_over = max_bottom - (self.CANVAS_H - self.safe_pad_px)
             h_over = max_right - (self.CANVAS_W - self.safe_pad_px)
-            return layout, v_over, h_over
+
+            # Detect missing composites (treated as overflow)
+            expected = len(groups.get('trio_composite', []))
+            placed = sum(1 for i in layout if i.get('is_composite'))
+            c_over = expected - placed
+
+            return layout, max(v_over, h_over, c_over)
 
         lo, hi = LOW, HIGH
         best_layout = None
         for _ in range(12):
             mid = (lo + hi) / 2
-            layout, v_over, h_over = try_ppi(mid)
-            overflow = max(v_over, h_over)
+            layout, overflow = try_ppi(mid)
             if overflow <= 0:
                 best_layout = layout
                 lo = mid
