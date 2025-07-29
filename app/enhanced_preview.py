@@ -507,12 +507,9 @@ class EnhancedPortraitPreviewGenerator:
         total_items = sum(len(items) for group, items in groups.items() if group != 'trio_composite')
         
         # Scale factor based on order size - fewer items = bigger scale, more items = smaller scale
-        if total_items <= 2:
-            # Extremely small orders - fill the canvas
-            scale_factor = 1.8
-        elif total_items <= 3:
+        if total_items <= 3:
             # Very small orders - make items much larger to fill space
-            scale_factor = 1.6
+            scale_factor = 1.4
         elif total_items <= 8:
             # Small orders - make items larger
             scale_factor = 1.2
@@ -1019,10 +1016,8 @@ class EnhancedPortraitPreviewGenerator:
         total_items = sum(len(items) for group, items in groups.items())
         
         # Scale factor based on order size
-        if total_items <= 2:
-            scale_factor = 1.8
-        elif total_items <= 3:
-            scale_factor = 1.6
+        if total_items <= 3:
+            scale_factor = 1.4
         elif total_items <= 8:
             scale_factor = 1.2
         elif total_items <= 15:
@@ -1121,7 +1116,7 @@ class EnhancedPortraitPreviewGenerator:
 
     def _fit_ppi(self, groups: Dict[str, List[Dict]]) -> Tuple[List[Dict], float]:
         """Binary search the tightest PPI that fits within the canvas."""
-        LOW, HIGH = 5.0, 250.0
+        LOW, HIGH = 5.0, 140.0
 
         def try_ppi(ppi: float) -> Tuple[List[Dict], float]:
             layout = self._layout_with_ppi(groups, ppi)
@@ -1151,26 +1146,6 @@ class EnhancedPortraitPreviewGenerator:
                 hi = mid
 
         return best_layout if best_layout is not None else [], lo
-
-    def _center_layout(self, layout: List[Dict]):
-        """Center the entire layout on the canvas."""
-        if not layout:
-            return
-
-        min_x = min(i["x"] for i in layout)
-        min_y = min(i["y"] for i in layout)
-        max_x = max(i["x"] + i["width"] for i in layout)
-        max_y = max(i["y"] + i["height"] for i in layout)
-
-        bbox_w = max_x - min_x
-        bbox_h = max_y - min_y
-
-        dx = (self.CANVAS_W - bbox_w) // 2 - min_x
-        dy = (self.CANVAS_H - bbox_h) // 2 - min_y
-
-        for i in layout:
-            i["x"] += dx
-            i["y"] += dy
 
     def _enforce_safe_zone(self, layout: List[Dict]):
         """Ensure all layout rectangles stay within the safe padding."""
@@ -1878,7 +1853,6 @@ class EnhancedPortraitPreviewGenerator:
             # STEP 17-20: Calculate PPI and layout with corrected scaling system (including composites)
             all_items = sorted_regular_items + [item for item, _ in trio_items]
             layout = self._calculate_corrected_layout_with_composites(sorted_regular_items, trio_items)
-            self._center_layout(layout)
             self._enforce_safe_zone(layout)
             
             # Draw title
@@ -2986,7 +2960,6 @@ class EnhancedPortraitPreviewGenerator:
             
             # Calculate layout with composites
             layout = self._calculate_corrected_layout_with_composites(sorted_regular_items, trio_items)
-            self._center_layout(layout)
             
             # Draw all items
             for position in layout:
