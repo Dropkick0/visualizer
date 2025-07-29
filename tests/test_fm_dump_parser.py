@@ -64,3 +64,21 @@ def test_prestige_not_marked_retouch():
     comp = next(it for it in items if it.get("complimentary"))
     assert comp["finish"] == "PRESTIGE"
     assert not comp.get("retouch")
+
+def test_no_false_retouch():
+    """Ensure complimentary 8x10 items never get retouch flag by finish."""
+    tsv_path = Path(__file__).resolve().parents[1] / "fm_dump.tsv"
+    parsed = parse_fm_dump(str(tsv_path))
+
+    from app.order_from_tsv import rows_to_order_items
+    from app.config import load_product_config
+
+    products_cfg = load_product_config()
+    items = rows_to_order_items(parsed.rows, parsed.frames, products_cfg, parsed.retouch_imgs, parsed)
+
+    bogus = [
+        it for it in items
+        if it.get("display_name", "").startswith("Complimentary 8x10")
+        and it.get("retouch")
+    ]
+    assert not bogus, "Complimentary 8x10 incorrectly marked retouch"
