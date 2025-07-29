@@ -3083,8 +3083,11 @@ class EnhancedPortraitPreviewGenerator:
 
     def _is_retouch(self, image_codes: List[str], item: Dict | None = None) -> bool:
         """Check if an item or its images are flagged for retouch."""
-        if item and item.get('retouch'):
-            return True
+        if item:
+            if item.get('retouch'):
+                return True
+            if any(item.get('retouch_flags', [])):
+                return True
 
         # Fallback to legacy list based on image codes
         retouch_list = ['0033', '0039']
