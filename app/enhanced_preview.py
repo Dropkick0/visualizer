@@ -899,7 +899,7 @@ class EnhancedPortraitPreviewGenerator:
                     spec = self.product_specs[product_code]
                 else:
                     size_cat = item.get('size_category')
-                    name = item.get('display_name', '')
+                    name = item.get('display_name', 'Unknown')
                     if size_cat == 'large_print' or any(sz in name for sz in LARGE_PRINT_SIZES):
                         guessed_size = _extract_size_from_item(item) or '8x10'
                         width, height = {
@@ -2970,7 +2970,7 @@ class EnhancedPortraitPreviewGenerator:
     def _is_artist_series(self, item: Dict, spec: Dict) -> bool:
         """Check if item qualifies for Artist Series banner"""
         # Artist Series applies to top three portrait options with specific descriptions
-        display_name = item.get('display_name', '')
+        display_name = item.get('display_name', 'Unknown')
         product_slug = item.get('product_slug', '')
         
         # Check for artist series keywords in display name or description
