@@ -11,4 +11,4 @@ def test_parse_fm_dump_basic():
     assert first.qty == 1
     assert first.code == "1013"
     assert first.imgs == ["0033"]
-    assert parsed.frames[0].number == "229"
+    assert parsed.frames[0].frame_no == "229"

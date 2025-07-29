@@ -1,7 +1,7 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 
-from .fm_dump_parser import RowTSV, FrameReq
-from .order_utils import apply_frames_to_items_from_meta
+from .fm_dump_parser import RowTSV, FrameReq, ParsedOrder
+from .order_utils import apply_frames_to_items_from_meta, explode_5x7_pairs_for_frames
 
 # Product metadata mapping based on POINTS SHEET & CODES.csv
 # Only the subset relevant for preview generation is included.
@@ -62,16 +62,37 @@ FRAME_META: Dict[str, Dict[str, str]] = {
 }
 
 
+def pad_code(code: str | None, width: int = 4) -> str:
+    """Zero pad an image or product code."""
+    return str(code).zfill(width) if code else ""
+
+
 def _sort_large_print(items: List[Dict]) -> List[Dict]:
     normal = [i for i in items if not i.get("complimentary")]
     comp = [i for i in items if i.get("complimentary")]
     return normal + comp
 
 
-def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg: Dict, retouch_imgs: List[str]) -> List[Dict]:
+def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg: Dict,
+                        retouch_imgs: List[str], parsed: Optional[ParsedOrder] = None) -> List[Dict]:
     """Convert TSV rows to order item dictionaries."""
     items: List[Dict] = []
     retouch_set = set(retouch_imgs or [])
+
+    # ---- complimentary 8x10 injection ----
+    if parsed and getattr(parsed, "dir_pose_code", None):
+        code = pad_code(parsed.dir_pose_code, 3)
+        if code in PRODUCTS and PRODUCTS[code]["type"] == "complimentary_8x10":
+            comp_row = RowTSV(
+                idx=0,
+                qty=1,
+                code=code,
+                desc="Directory Pose Complimentary",
+                imgs=[pad_code(parsed.dir_pose_img)],
+                artist_series=False,
+                complimentary=True,
+            )
+            rows.append(comp_row)
 
     for row in rows:
         if not row.code:
@@ -160,6 +181,9 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                     "display_name": f"{size} {base['finish'].title()}",
                 }
                 items.append(item)
+
+    # split 5x7 pair sheets into singles if frames are requested
+    items = explode_5x7_pairs_for_frames(items, frames, FRAME_META)
 
     # apply frames using metadata
     apply_frames_to_items_from_meta(items, frames, FRAME_META)
