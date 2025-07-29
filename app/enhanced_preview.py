@@ -12,6 +12,7 @@ import math
 
 # Import trio composite functionality
 from .trio_composite import TrioCompositeGenerator, is_trio_product, trio_template_filename
+from .order_utils import _extract_size_from_item
 
 # Import frame overlay functionality
 from .frame_overlay import (
@@ -20,6 +21,9 @@ from .frame_overlay import (
     create_frame_overlay_engine,
     apply_frames_simple,
 )
+
+# Recognized large print sizes for grouping
+LARGE_PRINT_SIZES = {"8x10", "10x13", "16x20", "20x24"}
 
 
 class EnhancedPortraitPreviewGenerator:
@@ -890,11 +894,26 @@ class EnhancedPortraitPreviewGenerator:
                 item = item_data['item']
                 product_code = item.get('product_code', '')
                 
-                # Look up spec
+                # Look up spec or fallback based on item info
                 if product_code in self.product_specs:
                     spec = self.product_specs[product_code]
                 else:
-                    continue  # Skip items without specs
+                    size_cat = item.get('size_category')
+                    name = item.get('display_name', '')
+                    if size_cat == 'large_print' or any(sz in name for sz in LARGE_PRINT_SIZES):
+                        guessed_size = _extract_size_from_item(item) or '8x10'
+                        width, height = {
+                            '10x13': (10.0, 13.0),
+                            '16x20': (16.0, 20.0),
+                            '20x24': (20.0, 24.0)
+                        }.get(guessed_size, (8.0, 10.0))
+                        spec = {
+                            'container_w_in': width,
+                            'container_h_in': height,
+                            'category': 'large_print'
+                        }
+                    else:
+                        continue  # Skip items without recognizable size
                 
                 if spec['category'] == 'large_print':
                     group_key = 'large_print'
@@ -1157,7 +1176,8 @@ class EnhancedPortraitPreviewGenerator:
                 customer_images=customer_images,
                 frame_color=frame_color,
                 matte_color=matte_color,
-                size=size_label
+                size=size_label,
+                fallback_to_5x10=True
             )
             
             if composite_image:
@@ -1263,7 +1283,7 @@ class EnhancedPortraitPreviewGenerator:
             subtitle_parts = []
             
             # Extract size from display name and clean it up
-            display_name = spec.get('display_name', 'Unknown')
+            display_name = item.get('display_name', spec.get('display_name', 'Unknown'))
             sheet_type = spec.get('sheet_type', '')
             category = spec.get('category', '')
             
@@ -1278,7 +1298,7 @@ class EnhancedPortraitPreviewGenerator:
             # Get finish type and prepare color coding
             finish_type = None
             if has_finish and item:
-                finish_type = item.get('finish_type', 'Basic')
+                finish_type = item.get('finish', item.get('finish_type', 'Basic'))
             
             # Extract and format size
             if 'x' in display_name.lower():
