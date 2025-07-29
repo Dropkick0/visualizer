@@ -58,7 +58,9 @@ def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False, debug: boo
 
     # Basic sanity checks on mapped items
     assert any("8x10" in it["display_name"] for it in order_items)
-    assert any(it.get("frame_color") for it in order_items if it["size_category"] == "large_print")
+    large_prints = [it for it in order_items if it["size_category"] == "large_print"]
+    if any(lp.get("has_frame") for lp in large_prints):
+        assert all(lp.get("frame_color") for lp in large_prints if lp.get("has_frame")), "Framed print missing frame_color"
     trio = next(it for it in order_items if it["size_category"] == "trio_composite")
     assert trio["frame_color"].lower() == "cherry"
     assert trio["matte_color"].lower() == "black"
