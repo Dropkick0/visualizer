@@ -1130,9 +1130,9 @@ class EnhancedPortraitPreviewGenerator:
             h_over = max_right - (self.CANVAS_W - self.safe_pad_px)
 
             # Detect missing composites (treated as overflow)
-            expected = len(groups.get('trio_composite', []))
+            n_composites = len(groups.get('trio_composite', []))
             placed = sum(1 for i in layout if i.get('is_composite'))
-            c_over = expected - placed
+            c_over = max(0, n_composites - placed)
 
             return layout, max(v_over, h_over, c_over)
 
