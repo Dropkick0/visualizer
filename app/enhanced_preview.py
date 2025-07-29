@@ -601,6 +601,10 @@ class EnhancedPortraitPreviewGenerator:
         row_order = ['large_print', 'ALL_5x7', 'SHEET3x5', 'WALLET8']
         
         current_y = self.LEFT_Y0 + 20  # Start with small top margin
+
+        # If there are no left-column groups, anchor to the true top
+        if not any(groups.get(g) for g in row_order):
+            current_y = self.LEFT_Y0
         row_gap = 30  # Gap between rows
         
         for group_name in row_order:
