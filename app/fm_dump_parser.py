@@ -13,18 +13,12 @@ class RowTSV:
     desc: Optional[str]
     imgs: List[str]
     artist_series: Optional[str]
-    complimentary: bool = False
 
 @dataclass
 class FrameReq:
     frame_no: str
     qty: int
     desc: str
-
-    @property
-    def number(self) -> str:
-        """Backwards compatibility alias used in tests."""
-        return self.frame_no
 
 @dataclass
 class ParsedOrder:
@@ -33,8 +27,6 @@ class ParsedOrder:
     retouch_imgs: List[str]
     directory_pose_no: Optional[str]
     directory_pose_img: Optional[str]
-    dir_pose_code: Optional[str] = None
-    dir_pose_img: Optional[str] = None
 
 
 def _to_int(val: str) -> Optional[int]:
@@ -96,11 +88,6 @@ def parse_fm_dump(tsv_path: str) -> ParsedOrder:
         directory_pose_no=by_label.get('Directory Pose Order #', '').strip() or None,
         directory_pose_img=by_label.get('Directory Pose Image #', '').strip() or None,
     )
-    # store raw directory pose values for downstream logic
-    dir_code = by_label.get('Directory Pose Order #', '').strip()
-    dir_img = by_label.get('Directory Pose Image #', '').strip()
-    parsed.dir_pose_code = dir_code
-    parsed.dir_pose_img = dir_img
     try:
         tmp = Path('tmp')
         tmp.mkdir(exist_ok=True)
