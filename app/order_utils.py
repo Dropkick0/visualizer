@@ -194,19 +194,17 @@ def normalize_5x7_for_frames(
     for s in singles:
         if frames_needed <= 0:
             break
-        if not s.get("framed"):
-            for fr in frame_reqs:
-                info = frame_meta.get(fr.frame_no)
-                if not info or info.get("size") != "5x7":
-                    continue
-                if fr.qty and fr.qty > 0:
-                    s["framed"] = True
-                    s["has_frame"] = True
-                    s["frame_color"] = info["color"]
-                    s["frame_spec"] = FrameSpec("5x7", info["color"].capitalize())
-                    fr.qty -= 1
-                    frames_needed -= 1
-                    break
+        for fr in frame_reqs:
+            info = frame_meta.get(fr.frame_no)
+            if not info or info["size"] != "5x7" or (fr.qty or 0) <= 0:
+                continue
+            s["framed"] = True
+            s["has_frame"] = True
+            s["frame_color"] = info["color"]
+            s["frame_spec"] = FrameSpec("5x7", info["color"].capitalize())
+            fr.qty -= 1
+            frames_needed -= 1
+            break
 
     framed_singles = [s for s in singles if s.get("framed")]
     unframed_singles = [s for s in singles if not s.get("framed")]

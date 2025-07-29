@@ -188,6 +188,9 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
     # apply frames using metadata
     apply_frames_to_items_from_meta(items, frames, FRAME_META)
 
+    for item in items:
+        item.setdefault("display_name", item.get("product_name", "Unknown"))
+
     # ensure complimentary last in large print section
     large = [i for i in items if i.get("size_category") == "large_print"]
     others = [i for i in items if i.get("size_category") != "large_print"]

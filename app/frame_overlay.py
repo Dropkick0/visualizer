@@ -423,7 +423,7 @@ class FrameOverlayEngine:
                     framed_item.update({
                         'has_frame': True,
                         'frame_spec': FrameSpec(frame_size, frame_style),
-                        'display_name': f"{framed_item.get('display_name', '')} ({frame_style} Frame)"
+                        'display_name': f"{framed_item.get('display_name', 'Unknown')} ({frame_style} Frame)"
                     })
                     modified_items.append(framed_item)
                     frames_used[frame_size] += quantity
@@ -436,7 +436,7 @@ class FrameOverlayEngine:
                         'quantity': available_frames,
                         'has_frame': True,
                         'frame_spec': FrameSpec(frame_size, frame_style),
-                        'display_name': f"{framed_item.get('display_name', '')} ({frame_style} Frame)"
+                        'display_name': f"{framed_item.get('display_name', 'Unknown')} ({frame_style} Frame)"
                     })
                     modified_items.append(framed_item)
                     
