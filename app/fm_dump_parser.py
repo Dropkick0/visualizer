@@ -84,6 +84,21 @@ def parse_fm_dump(tsv_path: str) -> ParsedOrder:
             continue
         order_rows.append(RowTSV(idx=i, qty=qty, code=code, desc=desc or None, imgs=imgs, artist_series=artist))
 
+    pose_img = by_label.get('Directory Pose Image #', '').strip()
+    if pose_img:
+        pose_code = by_label.get('Directory Pose Order #', '').strip() or '002'
+        order_rows.append(
+            RowTSV(
+                idx=0,
+                qty=1,
+                code=pose_code,
+                desc='Complimentary 8x10',
+                imgs=[pose_img.zfill(4)],
+                artist_series=None,
+                complimentary=True,
+            )
+        )
+
     parsed = ParsedOrder(
         rows=order_rows,
         frames=frames,
