@@ -47,3 +47,20 @@ def test_single_complimentary_item():
     )
     comps = [it for it in items if it.get("complimentary")]
     assert len(comps) == 1
+
+
+def test_prestige_not_marked_retouch():
+    """Complimentary 8x10 in PRESTIGE finish should not set retouch flag."""
+    from app.fm_dump_parser import RowTSV, ParsedOrder
+    from app.order_from_tsv import rows_to_order_items
+    from app.config import load_product_config
+
+    row = RowTSV(idx=1, qty=1, code="002", desc="Complimentary 8x10", imgs=["0517"], artist_series=False, complimentary=True)
+    parsed = ParsedOrder(rows=[row], frames=[], retouch_imgs=[], directory_pose_no=None, directory_pose_img=None)
+
+    products_cfg = load_product_config()
+    items = rows_to_order_items(parsed.rows, parsed.frames, products_cfg, parsed.retouch_imgs, parsed)
+
+    comp = next(it for it in items if it.get("complimentary"))
+    assert comp["finish"] == "PRESTIGE"
+    assert not comp.get("retouch")
