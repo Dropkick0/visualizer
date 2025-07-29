@@ -1052,45 +1052,56 @@ class EnhancedPortraitPreviewGenerator:
     def _layout_composites_with_ppi(self, composite_items: List[Dict], ppi: float) -> List[Dict]:
         """Layout composites in right region using unified PPI scaling"""
         layout = []
-        
+
         if not composite_items:
             return layout
-        
+
         # Sort composites by size (10×20 first, then 5×10 - largest first)
-        sorted_composites = sorted(composite_items, 
-                                 key=lambda x: x['spec']['container_w_in'] * x['spec']['container_h_in'], 
-                                 reverse=True)
-        
+        sorted_composites = sorted(
+            composite_items,
+            key=lambda x: x['spec']['container_w_in'] * x['spec']['container_h_in'],
+            reverse=True,
+        )
+
         current_y = self.RIGHT_Y0 + 20
         gap = 30
-        
+
         for item_data in sorted_composites:
             spec = item_data['spec']
             item = item_data['item']
-            
+
             # Calculate dimensions using unified PPI
             width_px = round(spec['container_w_in'] * ppi)
             height_px = round(spec['container_h_in'] * ppi)
-            
+
+            # Abort if the composite would exceed the allowed width
+            max_w = self.CANVAS_W - self.RIGHT_X0 - self.safe_pad_px
+            if width_px > max_w:
+                return []
+
             # Center horizontally in right region and clamp
             x = self.RIGHT_X0 + (self.RIGHT_REGION_W - width_px) // 2
             x = max(self.RIGHT_X0, min(x, self.RIGHT_X1 - width_px))
-            
-            layout.append({
-                'x': x,
-                'y': current_y,
-                'width': width_px,
-                'height': height_px,
-                'spec': spec,
-                'item': item,
-                'is_composite': True,
-                'original_index': item_data['original_index']
-            })
-            
+
+            layout.append(
+                {
+                    'x': x,
+                    'y': current_y,
+                    'width': width_px,
+                    'height': height_px,
+                    'spec': spec,
+                    'item': item,
+                    'is_composite': True,
+                    'original_index': item_data['original_index'],
+                }
+            )
+
             current_y += height_px + gap
-            
-            logger.debug(f"Composite {spec['container_w_in']}×{spec['container_h_in']} -> {width_px}×{height_px}px at ({x}, {current_y-height_px-gap})")
-        
+
+            logger.debug(
+                f"Composite {spec['container_w_in']}×{spec['container_h_in']} -> {width_px}×{height_px}px at ({x}, {current_y-height_px-gap})"
+            )
+
         return layout
 
     def _layout_with_ppi(self, groups: Dict[str, List[Dict]], ppi: float) -> List[Dict]:
@@ -1107,17 +1118,20 @@ class EnhancedPortraitPreviewGenerator:
         """Binary search the tightest PPI that fits within the canvas."""
         LOW, HIGH = 5.0, 140.0
 
-        def try_ppi(ppi: float) -> Tuple[List[Dict], float]:
+        def try_ppi(ppi: float) -> Tuple[List[Dict], float, float]:
             layout = self._layout_with_ppi(groups, ppi)
-            used_bottom = max((i['y'] + i['height'] for i in layout), default=0)
-            overflow = used_bottom - (self.CANVAS_H - self.safe_pad_px)
-            return layout, overflow
+            max_bottom = max((i['y'] + i['height'] for i in layout), default=0)
+            max_right = max((i['x'] + i['width'] for i in layout), default=0)
+            v_over = max_bottom - (self.CANVAS_H - self.safe_pad_px)
+            h_over = max_right - (self.CANVAS_W - self.safe_pad_px)
+            return layout, v_over, h_over
 
         lo, hi = LOW, HIGH
         best_layout = None
         for _ in range(12):
             mid = (lo + hi) / 2
-            layout, overflow = try_ppi(mid)
+            layout, v_over, h_over = try_ppi(mid)
+            overflow = max(v_over, h_over)
             if overflow <= 0:
                 best_layout = layout
                 lo = mid
