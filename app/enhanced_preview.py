@@ -1025,10 +1025,17 @@ class EnhancedPortraitPreviewGenerator:
         
         # Apply scaling while maintaining ratio constraints
         ppi = base_ppi * scale_factor
-        
-        # Apply reasonable bounds
-        ppi = min(ppi, 120)  # Higher maximum for small orders
-        ppi = max(ppi, 20)   # Lower minimum for large orders
+
+        # Clamp against hard limits after scaling
+        ppi = min(
+            ppi,
+            left_width_ppi,
+            left_height_ppi,
+            right_width_ppi,
+            right_height_ppi,
+            120,  # Upper bound for very small orders
+        )
+        ppi = max(ppi, 20)  # Lower bound for very large orders
         
         logger.info(f"Dynamic unified PPI calculation:")
         logger.info(f"  - Left: width={max_left_width:.1f}\", height={left_height_needed:.1f}\"")
@@ -1061,8 +1068,9 @@ class EnhancedPortraitPreviewGenerator:
             width_px = round(spec['container_w_in'] * ppi)
             height_px = round(spec['container_h_in'] * ppi)
             
-            # Center horizontally in right region
+            # Center horizontally in right region and clamp
             x = self.RIGHT_X0 + (self.RIGHT_REGION_W - width_px) // 2
+            x = max(self.RIGHT_X0, min(x, self.RIGHT_X1 - width_px))
             
             layout.append({
                 'x': x,
