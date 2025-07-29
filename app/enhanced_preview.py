@@ -862,22 +862,18 @@ class EnhancedPortraitPreviewGenerator:
         # Group items by category (now including composites)
         groups = self._group_items_by_category_with_composites(all_items)
         
-        # Calculate unified PPI for all products
-        ppi_unified = self._calculate_optimal_ppi_with_composites(groups)
-        
-        # Calculate reference dimensions
-        eight_w_px = round(8.0 * ppi_unified)
-        eight_h_px = round(10.0 * ppi_unified)
-        
-        logger.info(f"Unified proportional scaling: PPI={ppi_unified:.1f}, includes composites at correct ratios")
-        
-        # Layout left region (regular products)
-        left_layout = self._layout_groups_with_ppi(groups, ppi_unified, eight_w_px, eight_h_px)
-        
-        # Layout right region (composites) using same PPI
-        right_layout = self._layout_composites_with_ppi(groups.get('trio_composite', []), ppi_unified)
-        
-        return left_layout + right_layout
+        # Calculate initial PPI and refine to perfectly fit the canvas
+        start_ppi = self._calculate_optimal_ppi_with_composites(groups)
+        ppi_unified = self._fit_ppi(groups, start_ppi)
+
+        logger.info(
+            f"Unified proportional scaling: PPI={ppi_unified:.1f}, includes composites at correct ratios"
+        )
+
+        # Layout all items using the final PPI
+        layout = self._layout_all_items_with_ppi(groups, ppi_unified)
+
+        return layout
 
     def _group_items_by_category_with_composites(self, items: List[Dict]) -> Dict[str, List[Dict]]:
         """Group items including composites in proper categories"""
@@ -1006,42 +1002,27 @@ class EnhancedPortraitPreviewGenerator:
         # Find the most restrictive constraint, respecting both columns
         left_ppi = min(left_width_ppi, left_height_ppi)
         right_ppi = min(right_width_ppi, right_height_ppi)
-        base_ppi = min(left_ppi, right_ppi)
         
-        # Apply dynamic scaling based on total item count (including composites)
-        total_items = sum(len(items) for group, items in groups.items())
-        
-        # Scale factor based on order size
-        if total_items <= 3:
-            scale_factor = 1.4
-        elif total_items <= 8:
-            scale_factor = 1.2
-        elif total_items <= 15:
-            scale_factor = 1.0
-        elif total_items <= 25:
-            scale_factor = 0.9
-        else:
-            scale_factor = 0.75
-        
-        # Apply scaling while maintaining ratio constraints
-        ppi = base_ppi * scale_factor
-
-        # Clamp against hard limits after scaling
+        # Start with the strictest physical constraint from both columns
         ppi = min(
-            ppi,
             left_width_ppi,
             left_height_ppi,
             right_width_ppi,
             right_height_ppi,
-            120,  # Upper bound for very small orders
+            120,  # keep a reasonable upper bound
         )
-        ppi = max(ppi, 20)  # Lower bound for very large orders
         
-        logger.info(f"Dynamic unified PPI calculation:")
-        logger.info(f"  - Left: width={max_left_width:.1f}\", height={left_height_needed:.1f}\"")
-        logger.info(f"  - Right: width={max_right_width:.1f}\", height={total_right_height:.1f}\"")
-        logger.info(f"  - PPIs: L_w={left_width_ppi:.1f}, L_h={left_height_ppi:.1f}, R_w={right_width_ppi:.1f}, R_h={right_height_ppi:.1f}")
-        logger.info(f"  - Total items: {total_items}, Scale factor: {scale_factor:.2f}, Final PPI: {ppi:.1f}")
+        logger.info("Dynamic unified PPI calculation:")
+        logger.info(
+            f"  - Left: width={max_left_width:.1f}\", height={left_height_needed:.1f}\""
+        )
+        logger.info(
+            f"  - Right: width={max_right_width:.1f}\", height={total_right_height:.1f}\""
+        )
+        logger.info(
+            f"  - PPIs: L_w={left_width_ppi:.1f}, L_h={left_height_ppi:.1f}, R_w={right_width_ppi:.1f}, R_h={right_height_ppi:.1f}"
+        )
+        logger.info(f"  - Final PPI: {ppi:.1f}")
         
         return ppi
 
@@ -1096,6 +1077,27 @@ class EnhancedPortraitPreviewGenerator:
             assert item['x'] >= pad and item['y'] >= pad, "Item fell above/left of safe zone"
             assert item['x'] + item['width'] <= self.CANVAS_W - pad, "Item overflowed right edge"
             assert item['y'] + item['height'] <= self.CANVAS_H - pad, "Item overflowed bottom edge"
+
+    def _layout_all_items_with_ppi(self, groups: Dict[str, List[Dict]], ppi: float) -> List[Dict]:
+        """Layout all items (regular + composites) using a fixed PPI"""
+        eight_w_px = round(8.0 * ppi)
+        eight_h_px = round(10.0 * ppi)
+        left_layout = self._layout_groups_with_ppi(groups, ppi, eight_w_px, eight_h_px)
+        right_layout = self._layout_composites_with_ppi(groups.get('trio_composite', []), ppi)
+        return left_layout + right_layout
+
+    def _fit_ppi(self, groups: Dict[str, List[Dict]], max_ppi: float) -> float:
+        """Binary search to find largest PPI that fits within canvas height"""
+        low, high = 1.0, max_ppi
+        for _ in range(12):
+            mid = (low + high) / 2
+            layout = self._layout_all_items_with_ppi(groups, mid)
+            max_y = max((it['y'] + it['height'] for it in layout), default=0)
+            if max_y > self.CANVAS_H - self.safe_pad_px:
+                high = mid
+            else:
+                low = mid
+        return low
 
     def _draw_product_corrected(self, canvas: Image.Image, position: Dict):
         """Draw product using corrected orientation and master images - includes composites"""
@@ -1796,19 +1798,31 @@ class EnhancedPortraitPreviewGenerator:
             all_items = sorted_regular_items + [item for item, _ in trio_items]
             layout = self._calculate_corrected_layout_with_composites(sorted_regular_items, trio_items)
             self._enforce_safe_zone(layout)
-            
+
+            max_x = max((p['x'] + p['width'] for p in layout), default=0)
+            max_y = max((p['y'] + p['height'] for p in layout), default=0)
+
             # Draw title
             self._draw_title(canvas, "Portrait Order Preview")
-            
+
             # Draw all products (regular and composites) using unified rendering
             for position in layout:
                 self._draw_product_corrected(canvas, position)
-            
-            # Add minimal order info
-            self._draw_minimal_summary(canvas, sorted_regular_items + [item for item, _ in trio_items])
+
+            # Add minimal order info and get its bbox
+            summary_box = self._draw_minimal_summary(
+                canvas, sorted_regular_items + [item for item, _ in trio_items]
+            )
+
+            max_x = max(max_x, summary_box[0] + summary_box[2])
+            max_y = max(max_y, summary_box[1] + summary_box[3])
 
             if debug:
                 self._draw_debug_regions(canvas)
+
+            used_w = min(int(max_x + self.safe_pad_px), canvas.width)
+            used_h = min(int(max_y + self.safe_pad_px), canvas.height)
+            canvas = canvas.crop((0, 0, used_w, used_h))
 
             # Save preview
             canvas.save(output_filename, 'PNG', quality=95)
@@ -2831,29 +2845,32 @@ class EnhancedPortraitPreviewGenerator:
         except:
             pass
     
-    def _draw_minimal_summary(self, canvas: Image.Image, items: List[Dict]):
-        """Draw minimal order summary"""
+    def _draw_minimal_summary(self, canvas: Image.Image, items: List[Dict]) -> Tuple[int, int, int, int]:
+        """Draw minimal order summary and return its bounding box"""
         draw = ImageDraw.Draw(canvas)
-        
+
         try:
             font = ImageFont.load_default()
-            
+
             # Count totals
             total_pieces = sum(item.get('quantity', 1) for item in items)
             total_types = len(items)
-            
+
             summary_text = f"Order: {total_types} product types, {total_pieces} total pieces"
-            
-            # Bottom right corner
+
             bbox = draw.textbbox((0, 0), summary_text, font=font)
             text_width = bbox[2] - bbox[0]
-            x = self.CANVAS_W - text_width - 20
-            y = self.CANVAS_H - 30
-            
+            text_height = bbox[3] - bbox[1]
+            x = canvas.width - text_width - 20
+            y = canvas.height - 30
+
             draw.text((x, y), summary_text, fill=(120, 120, 120), font=font)
-            
+
+            return (x, y, text_width, text_height)
+
         except Exception as e:
             logger.error(f"Error drawing summary: {e}")
+            return (0, 0, 0, 0)
 
     def generate_frame_showcase_preview(self, items: List[Dict], output_filename: str,
                                        frame_requirements: Dict[str, int] = None) -> bool:
