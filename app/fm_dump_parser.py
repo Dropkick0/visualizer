@@ -13,6 +13,7 @@ class RowTSV:
     desc: Optional[str]
     imgs: List[str]
     artist_series: Optional[str]
+    complimentary: bool = False
 
 @dataclass
 class FrameReq:
@@ -20,13 +21,17 @@ class FrameReq:
     qty: int
     desc: str
 
+    @property
+    def number(self) -> str:
+        return self.frame_no
+
 @dataclass
 class ParsedOrder:
     rows: List[RowTSV]
     frames: List[FrameReq]
     retouch_imgs: List[str]
-    directory_pose_no: Optional[str]
-    directory_pose_img: Optional[str]
+    dir_pose_code: Optional[str]
+    dir_pose_img: Optional[str]
 
 
 def _to_int(val: str) -> Optional[int]:
@@ -85,9 +90,14 @@ def parse_fm_dump(tsv_path: str) -> ParsedOrder:
         rows=order_rows,
         frames=frames,
         retouch_imgs=retouch_images,
-        directory_pose_no=by_label.get('Directory Pose Order #', '').strip() or None,
-        directory_pose_img=by_label.get('Directory Pose Image #', '').strip() or None,
+        dir_pose_code=None,
+        dir_pose_img=None,
     )
+
+    dir_code = by_label.get('Directory Pose Order #', '').strip()
+    dir_img = by_label.get('Directory Pose Image #', '').strip()
+    parsed.dir_pose_code = dir_code or None
+    parsed.dir_pose_img = dir_img or None
     try:
         tmp = Path('tmp')
         tmp.mkdir(exist_ok=True)
