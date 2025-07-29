@@ -135,6 +135,10 @@ class EnhancedPortraitPreviewGenerator:
         logger.info(f"Parsed frame requirements from screenshot: {frame_requirements}")
         return frame_requirements
 
+    def _safe_disp(self, spec: Dict, item: Dict) -> str:
+        """Return a safe display name for logging."""
+        return spec.get('display_name') or item.get('display_name') or item.get('product_code', 'Unknown')
+
     def _build_product_spec_table(self) -> Dict[str, Dict]:
         """STEP 4: Build unified Product Spec Table with all product definitions"""
         specs = {
@@ -672,9 +676,11 @@ class EnhancedPortraitPreviewGenerator:
                 frame_spec = item.get('frame_spec')
                 width_px += frame_spec.left_thickness + frame_spec.right_thickness
                 height_px += frame_spec.top_thickness + frame_spec.bottom_thickness
-                logger.debug(f"Added frame space to {spec['display_name']}: "
-                           f"+{frame_spec.left_thickness + frame_spec.right_thickness}px width, "
-                           f"+{frame_spec.top_thickness + frame_spec.bottom_thickness}px height")
+                logger.debug(
+                    f"Added frame space to {self._safe_disp(spec, item)}: "
+                    f"+{frame_spec.left_thickness + frame_spec.right_thickness}px width, "
+                    f"+{frame_spec.top_thickness + frame_spec.bottom_thickness}px height"
+                )
             
             # Calculate total height including subtitle space
             total_height_px = height_px + subtitle_space
@@ -685,7 +691,9 @@ class EnhancedPortraitPreviewGenerator:
                 current_x = self.LEFT_X0
                 current_y += row_height + 20  # Move down by row height + gap
                 row_height = 0  # Reset row height for new row
-                logger.debug(f"5x7 section wrapped to new row at y={current_y} for {spec['display_name']}")
+                logger.debug(
+                    f"5x7 section wrapped to new row at y={current_y} for {self._safe_disp(spec, item)}"
+                )
             
             layout.append({
                 'x': current_x,
@@ -730,9 +738,11 @@ class EnhancedPortraitPreviewGenerator:
                 frame_spec = item.get('frame_spec')
                 width_px += frame_spec.left_thickness + frame_spec.right_thickness
                 height_px += frame_spec.top_thickness + frame_spec.bottom_thickness
-                logger.debug(f"Added frame space to {spec['display_name']}: "
-                           f"+{frame_spec.left_thickness + frame_spec.right_thickness}px width, "
-                           f"+{frame_spec.top_thickness + frame_spec.bottom_thickness}px height")
+                logger.debug(
+                    f"Added frame space to {self._safe_disp(spec, item)}: "
+                    f"+{frame_spec.left_thickness + frame_spec.right_thickness}px width, "
+                    f"+{frame_spec.top_thickness + frame_spec.bottom_thickness}px height"
+                )
             
             # Add space for subtitle below the image
             total_height_px = height_px + subtitle_space
@@ -743,7 +753,9 @@ class EnhancedPortraitPreviewGenerator:
                 current_x = self.LEFT_X0
                 current_y += row_height + 20  # Move down by row height + gap
                 row_height = 0  # Reset row height for new row
-                logger.debug(f"Wrapped to new row at y={current_y} for {spec['display_name']}")
+                logger.debug(
+                    f"Wrapped to new row at y={current_y} for {self._safe_disp(spec, item)}"
+                )
             
             # Position item (height is still the image height, subtitle space is handled in row calculations)
             row_layout.append({
