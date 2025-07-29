@@ -209,6 +209,15 @@ python -c "from app.config import load_config; print('Config valid!')"
 ### Asset Validation
 Run startup checks to ensure required directories and files exist.
 
+### Preview from TSV
+The `test_preview_with_fm_dump.py` helper script can render a preview from a
+FileMaker TSV export without performing OCR. Use this for debugging complex
+orders. Pass `--extreme` to replicate items and stress‑test the layout engine:
+
+```bash
+python test_preview_with_fm_dump.py --extreme
+```
+
 ## 📝 Adding New Products
 
 1. **Update `config/products.yaml`**

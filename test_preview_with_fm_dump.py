@@ -18,7 +18,24 @@ from test_corrected_preview_v2_with_ocr_FIXED import (
 from app.order_from_tsv import rows_to_order_items
 
 
-def run_preview(tsv_path: str = "fm_dump.tsv") -> bool:
+def _expand_extremes(order_items: List[dict]) -> List[dict]:
+    """Return a new list of order items with counts amplified for stress tests."""
+    extreme_items: List[dict] = []
+    for item in order_items:
+        extreme_items.append(item)
+        if item.get("size_category") == "wallet_sheet":
+            extreme_items.extend([item.copy() for _ in range(5)])  # 6x wallets
+        elif item.get("size_category") == "trio_composite":
+            extreme_items.extend([item.copy() for _ in range(9)])  # 10x trios
+        elif item.get("size_category") == "medium_sheet":
+            extreme_items.extend([item.copy() for _ in range(3)])  # 4x 5x7s
+        elif item.get("size_category") == "large_print":
+            extreme_items.extend([item.copy() for _ in range(2)])  # 3x prints
+
+    return extreme_items
+
+
+def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False) -> bool:
     products_cfg = load_product_config()
 
     print("\n🔍 Step 1: Load AHK TSV Export")
@@ -61,6 +78,10 @@ def run_preview(tsv_path: str = "fm_dump.tsv") -> bool:
     else:
         print("⚠️ No image searcher – previews will be blank.")
 
+    if extreme:
+        order_items = _expand_extremes(order_items)
+        print(f"🚨 Extreme test mode: {len(order_items)} items after expansion")
+
     frame_requirements = determine_frame_requirements_from_items(order_items)
 
     outdir = Path("app/static/previews")
@@ -73,5 +94,15 @@ def run_preview(tsv_path: str = "fm_dump.tsv") -> bool:
 
 
 if __name__ == "__main__":
-    tsv = sys.argv[1] if len(sys.argv) > 1 else "fm_dump.tsv"
-    run_preview(tsv)
+    tsv = "fm_dump.tsv"
+    extreme = False
+
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--extreme":
+            extreme = True
+        else:
+            tsv = sys.argv[1]
+            if len(sys.argv) > 2 and sys.argv[2] == "--extreme":
+                extreme = True
+
+    run_preview(tsv, extreme)
