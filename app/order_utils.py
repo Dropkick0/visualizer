@@ -126,7 +126,7 @@ def apply_frames_to_items_from_meta(items: List[Dict], frame_reqs: List[Frame], 
     """Assign frames to items based on frame metadata."""
     size_buckets: Dict[str, List[Dict]] = {}
     for it in items:
-        if it.get("size_category") not in ("large_print", "medium_print"):
+        if it.get("size_category") != "large_print":
             continue
         if it.get("frame_color") or it.get("sheet_type") == "landscape_2x1":
             # skip already framed or 5x7 pair sheets
@@ -201,7 +201,9 @@ def normalize_5x7_for_frames(
                     continue
                 if fr.qty and fr.qty > 0:
                     s["framed"] = True
+                    s["has_frame"] = True
                     s["frame_color"] = info["color"]
+                    s["frame_spec"] = FrameSpec("5x7", info["color"].capitalize())
                     fr.qty -= 1
                     frames_needed -= 1
                     break
