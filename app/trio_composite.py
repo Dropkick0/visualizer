@@ -11,14 +11,6 @@ from PIL import Image, ImageDraw
 from loguru import logger
 
 
-def trio_template_filename(size: str, frame: str, matte: str) -> str:
-    """Build the template filename used for composites."""
-    size_label = "5x10" if size == "5x10" else "10x20"
-    frame_title = frame.capitalize()
-    matte_title = matte.capitalize()
-    return f"Frame {frame_title} - {matte_title} {size_label} 3 Image.jpg"
-
-
 def is_trio_product(product: Dict) -> bool:
     """Check if a product is a trio product"""
     slug = product.get('slug', '')
@@ -100,12 +92,11 @@ class TrioComposite:
         
     def load_composite(self, composites_dir: Path) -> bool:
         """Load the composite frame image"""
-        # Build filename based on frame/matte/size
+        # Build filename: "Frame [Color] - [Matte] 5x10 3 Image.jpg"
         # Note: some files have extra spaces, so we'll try different variations
-        base_name = trio_template_filename(self.size, self.frame_color, self.matte_color)
         possible_filenames = [
-            base_name,
-            base_name.replace("  ", " ")  # fallback with single spaces
+            f"Frame {self.frame_color} - {self.matte_color} {self.size} 3 Image.jpg",
+            f"Frame {self.frame_color} - {self.matte_color}  {self.size} 3 Image.jpg"  # Extra space
         ]
         
         logger.debug(f"Looking for composite {self.frame_color}/{self.matte_color} {self.size} in {composites_dir}")
