@@ -10,6 +10,9 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from loguru import logger
 import math
 
+# Global safe zone padding in pixels
+SAFE_PAD_PX = 40
+
 # Import trio composite functionality
 from .trio_composite import TrioCompositeGenerator, is_trio_product, trio_template_filename
 from .order_utils import _extract_size_from_item
@@ -40,31 +43,32 @@ class EnhancedPortraitPreviewGenerator:
         # STEP 1: FREEZE CANVAS CONSTANTS (never change these)
         self.CANVAS_W = 2400
         self.CANVAS_H = 1600
-        
+
         # STEP 2: DEFINE SAFE DRAWABLE REGION
-        self.MARGIN_TOP = 60
-        self.MARGIN_LEFT = 40
-        self.MARGIN_RIGHT = 40
-        self.MARGIN_BOTTOM = 80
-        
-        self.DRAW_W = self.CANVAS_W - self.MARGIN_LEFT - self.MARGIN_RIGHT
-        self.DRAW_H = self.CANVAS_H - self.MARGIN_TOP - self.MARGIN_BOTTOM
+        self.safe_pad_px = SAFE_PAD_PX
+        self.MARGIN_TOP = self.safe_pad_px
+        self.MARGIN_LEFT = self.safe_pad_px
+        self.MARGIN_RIGHT = self.safe_pad_px
+        self.MARGIN_BOTTOM = self.safe_pad_px
+
+        self.DRAW_W = self.CANVAS_W - 2 * self.safe_pad_px
+        self.DRAW_H = self.CANVAS_H - 2 * self.safe_pad_px
         
         # STEP 3: PARTITION CANVAS (Left: Regular prints, Right: Composites)
         self.RIGHT_REGION_W = 500  # Fixed pixel width for composites
         self.INTER_REGION_GAP = 20
         self.LEFT_REGION_W = self.DRAW_W - self.RIGHT_REGION_W - self.INTER_REGION_GAP
-        
+
         # Left region bounds
-        self.LEFT_X0 = self.MARGIN_LEFT
-        self.LEFT_Y0 = self.MARGIN_TOP
+        self.LEFT_X0 = self.safe_pad_px
+        self.LEFT_Y0 = self.safe_pad_px
         self.LEFT_X1 = self.LEFT_X0 + self.LEFT_REGION_W
         self.LEFT_Y1 = self.LEFT_Y0 + self.DRAW_H
-        
-        # Right region bounds  
-        self.RIGHT_X0 = self.LEFT_X1 + self.INTER_REGION_GAP
-        self.RIGHT_Y0 = self.MARGIN_TOP
-        self.RIGHT_X1 = self.RIGHT_X0 + self.RIGHT_REGION_W
+
+        # Right region bounds
+        self.RIGHT_X1 = self.CANVAS_W - self.safe_pad_px
+        self.RIGHT_X0 = self.RIGHT_X1 - self.RIGHT_REGION_W
+        self.RIGHT_Y0 = self.safe_pad_px
         self.RIGHT_Y1 = self.RIGHT_Y0 + self.DRAW_H
         
         self.beige_color = (245, 240, 230)  # Warm beige background
@@ -1075,6 +1079,40 @@ class EnhancedPortraitPreviewGenerator:
         
         return layout
 
+    def _enforce_safe_zone(self, layout: List[Dict]):
+        """Ensure all layout rectangles stay within the safe padding."""
+        pad = self.safe_pad_px
+        if not layout:
+            return
+
+        max_x = max(item['x'] + item['width'] for item in layout)
+        max_y = max(item['y'] + item['height'] for item in layout)
+        min_x = min(item['x'] for item in layout)
+        min_y = min(item['y'] for item in layout)
+
+        dx = 0
+        dy = 0
+        if max_x > self.CANVAS_W - pad:
+            dx = (self.CANVAS_W - pad) - max_x
+        if max_y > self.CANVAS_H - pad:
+            dy = (self.CANVAS_H - pad) - max_y
+        if min_x < pad:
+            dx = max(dx, pad - min_x)
+        if min_y < pad:
+            dy = max(dy, pad - min_y)
+
+        if dx or dy:
+            for item in layout:
+                item['x'] += dx
+                item['y'] += dy
+
+        assert all(
+            item['x'] >= pad and item['y'] >= pad and
+            item['x'] + item['width'] <= self.CANVAS_W - pad and
+            item['y'] + item['height'] <= self.CANVAS_H - pad
+            for item in layout
+        )
+
     def _draw_product_corrected(self, canvas: Image.Image, position: Dict):
         """Draw product using corrected orientation and master images - includes composites"""
         x, y = position['x'], position['y']
@@ -1088,7 +1126,7 @@ class EnhancedPortraitPreviewGenerator:
             return
         
         draw = ImageDraw.Draw(canvas)
-        
+
         # Draw container border (thin gray)
         draw.rectangle([x-2, y-2, x+width+2, y+height+2], outline=(120, 120, 120), width=2)
         
@@ -1771,6 +1809,7 @@ class EnhancedPortraitPreviewGenerator:
             # STEP 17-20: Calculate PPI and layout with corrected scaling system (including composites)
             all_items = sorted_regular_items + [item for item, _ in trio_items]
             layout = self._calculate_corrected_layout_with_composites(sorted_regular_items, trio_items)
+            self._enforce_safe_zone(layout)
             
             # Draw title
             self._draw_title(canvas, "Portrait Order Preview")
@@ -1795,6 +1834,9 @@ class EnhancedPortraitPreviewGenerator:
     def _draw_debug_regions(self, canvas: Image.Image):
         """Draw debug visualization of layout regions"""
         draw = ImageDraw.Draw(canvas)
+
+        pad = self.safe_pad_px
+        draw.rectangle([pad, pad, self.CANVAS_W - pad, self.CANVAS_H - pad], outline="red", width=2)
         
         # Draw left region bounds (green)
         draw.rectangle([self.LEFT_X0, self.LEFT_Y0, self.LEFT_X1, self.LEFT_Y1], 
