@@ -100,87 +100,92 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
         meta = PRODUCTS.get(row.code)
         if not meta:
             continue
+
+        base = {
+            "product_code": row.code,
+            "image_codes": row.imgs[:],
+            "quantity": 1,
+            "retouch": any(img in retouch_set for img in row.imgs),
+            "artist_series": bool(row.artist_series),
+            "finish": meta.get("finish", "BASIC"),
+        }
+        t = meta["type"]
+
+        if t.startswith("trio_"):
+            size = t.split("_")[1]
+            imgs = (row.imgs + ["", "", ""])[:3]
+            item = {
+                **base,
+                "product_code": "510.3" if size == "5x10" else "1020.5",
+                "product_slug": f"trio_{size}_composite",
+                "size_category": "trio_composite",
+                "template": "trio_horizontal",
+                "count_images": 3,
+                "image_codes": imgs,
+                "retouch_flags": [img in retouch_set for img in imgs],
+                "artist_flags": [bool(row.artist_series)] * 3,
+                "frame_color": meta.get("frame", "").capitalize(),
+                "matte_color": meta.get("mat", "").capitalize(),
+                "display_name": f"Trio {size} ({meta.get('frame','').capitalize()})",
+            }
+        elif t == "wallet_sheet":
+            item = {
+                **base,
+                "product_code": "200_sheet",
+                "product_slug": "WALLET8",
+                "size_category": "wallet_sheet",
+                "group_hint": "WALLET8",
+                "sheet_type": "2x2",
+                "display_name": f"Wallet Sheet ({base['finish'].title()})",
+            }
+        elif t == "3x5_sheet":
+            item = {
+                **base,
+                "product_code": "350_sheet",
+                "product_slug": "SHEET3x5",
+                "size_category": "small_sheet",
+                "group_hint": "SHEET3x5",
+                "sheet_type": "2x2",
+                "display_name": f"3.5x5 Sheet ({base['finish'].title()})",
+            }
+        elif t == "5x7_pair":
+            item = {
+                **base,
+                "product_code": "570_sheet",
+                "product_slug": "ALL_5x7",
+                "size_category": "medium_sheet",
+                "group_hint": "ALL_5x7",
+                "sheet_type": "landscape_2x1",
+                "display_name": f"5x7 Pair ({base['finish'].title()})",
+            }
+        elif t == "complimentary_8x10":
+            item = {
+                **base,
+                "product_slug": f"8x10_{base['finish'].lower()}_{row.code}",
+                "size_category": "large_print",
+                "complimentary": True,
+                "display_name": f"Complimentary 8x10 ({base['finish'].title()})",
+            }
+        else:
+            size = t
+            item = {
+                **base,
+                "product_slug": f"{size}_{base['finish'].lower()}_{row.code}",
+                "size_category": "large_print",
+                "display_name": f"{size} {base['finish'].title()}",
+            }
+
+        if row.complimentary and any(
+            it["product_code"] == row.code
+            and set(it.get("image_codes", [])) == set(row.imgs)
+            and it.get("complimentary")
+            for it in items
+        ):
+            continue
+
         qty = row.qty or 1
         for _ in range(qty):
-            base = {
-                "product_code": row.code,
-                "image_codes": row.imgs[:],
-                "quantity": 1,
-                "retouch": any(img in retouch_set for img in row.imgs),
-                "artist_series": bool(row.artist_series),
-                "finish": meta.get("finish", "BASIC"),
-            }
-            t = meta["type"]
-            if t.startswith("trio_"):
-                size = t.split("_")[1]     # "10x20" or "5x10"
-                imgs = (row.imgs + ["", "", ""])[:3]
-                item = {
-                    **base,
-                    "product_code": "510.3" if size == "5x10" else "1020.5",
-                    "product_slug": f"trio_{size}_composite",
-                    "size_category": "trio_composite",
-                    "template": "trio_horizontal",
-                    "count_images": 3,
-                    "image_codes": imgs,
-                    "retouch_flags": [img in retouch_set for img in imgs],
-                    "artist_flags": [bool(row.artist_series)] * 3,
-                    "frame_color": meta.get("frame", "").capitalize(),
-                    "matte_color": meta.get("mat", "").capitalize(),
-                    "display_name": f"Trio {size} ({meta.get('frame','').capitalize()})",
-                }
-                items.append(item)
-            elif t == "wallet_sheet":
-                item = {
-                    **base,
-                    "product_code": "200_sheet",
-                    "product_slug": "WALLET8",
-                    "size_category": "wallet_sheet",
-                    "group_hint": "WALLET8",
-                    "sheet_type": "2x2",
-                    "display_name": f"Wallet Sheet ({base['finish'].title()})",
-                }
-                items.append(item)
-            elif t == "3x5_sheet":
-                item = {
-                    **base,
-                    "product_code": "350_sheet",
-                    "product_slug": "SHEET3x5",
-                    "size_category": "small_sheet",
-                    "group_hint": "SHEET3x5",
-                    "sheet_type": "2x2",
-                    "display_name": f"3.5x5 Sheet ({base['finish'].title()})",
-                }
-                items.append(item)
-            elif t == "5x7_pair":
-                item = {
-                    **base,
-                    "product_code": "570_sheet",
-                    "product_slug": "ALL_5x7",
-                    "size_category": "medium_sheet",
-                    "group_hint": "ALL_5x7",
-                    "sheet_type": "landscape_2x1",
-                    "display_name": f"5x7 Pair ({base['finish'].title()})",
-                }
-                items.append(item)
-            elif t == "complimentary_8x10":
-                item = {
-                    **base,
-                    "product_slug": f"8x10_{base['finish'].lower()}_{row.code}",
-                    "size_category": "large_print",
-                    "complimentary": True,
-                    "display_name": f"Complimentary 8x10 ({base['finish'].title()})",
-                }
-                items.append(item)
-            else:
-                # Large prints
-                size = t
-                item = {
-                    **base,
-                    "product_slug": f"{size}_{base['finish'].lower()}_{row.code}",
-                    "size_category": "large_print",
-                    "display_name": f"{size} {base['finish'].title()}",
-                }
-                items.append(item)
+            items.append(item.copy())
 
     # normalize 5x7 items with respect to frame requests
     items = normalize_5x7_for_frames(items, frames, FRAME_META)

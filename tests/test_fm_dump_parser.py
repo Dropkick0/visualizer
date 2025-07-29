@@ -28,3 +28,22 @@ def test_complimentary_deduplicated():
         if it.get("complimentary") and "8x10" in it["display_name"]
     )
     assert comp_count == 1
+
+
+def test_single_complimentary_item():
+    tsv_path = Path(__file__).resolve().parents[1] / "fm_dump.tsv"
+    parsed = parse_fm_dump(str(tsv_path))
+
+    from app.order_from_tsv import rows_to_order_items
+    from app.config import load_product_config
+
+    products_cfg = load_product_config()
+    items = rows_to_order_items(
+        parsed.rows,
+        parsed.frames,
+        products_cfg,
+        parsed.retouch_imgs,
+        parsed,
+    )
+    comps = [it for it in items if it.get("complimentary")]
+    assert len(comps) == 1
