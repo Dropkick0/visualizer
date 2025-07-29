@@ -125,9 +125,10 @@ def apply_frames_to_items_from_meta(items: List[Dict], frame_reqs: List[Frame], 
     """Assign frames to items based on frame metadata."""
     size_buckets: Dict[str, List[Dict]] = {}
     for it in items:
-        if it.get("size_category") != "large_print":
+        if it.get("size_category") not in ("large_print", "medium_print"):
             continue
-        if it.get("frame_color"):
+        if it.get("frame_color") or it.get("sheet_type") == "landscape_2x1":
+            # skip already framed or 5x7 pair sheets
             continue
         size = _extract_size_from_item(it)
         if not size:
@@ -152,3 +153,48 @@ def apply_frames_to_items_from_meta(items: List[Dict], frame_reqs: List[Frame], 
         fr.qty = needed
 
     return items
+
+
+def explode_5x7_pairs_for_frames(items: List[Dict], frame_reqs: List[Frame], frame_meta: Dict[str, Dict[str, str]]):
+    """Split 5x7 pair sheets into single prints if frames are requested."""
+    needed = 0
+    for fr in frame_reqs:
+        info = frame_meta.get(fr.frame_no)
+        if info and info.get("size") == "5x7":
+            needed += fr.qty or 0
+
+    if needed == 0:
+        return items
+
+    new_items: List[Dict] = []
+    for it in items:
+        if (
+            it.get("product_slug") == "ALL_5x7"
+            and it.get("sheet_type") == "landscape_2x1"
+            and needed > 0
+        ):
+            imgs = it.get("image_codes", [])
+            for _ in range(2):
+                if needed <= 0:
+                    break
+                single = {
+                    **it,
+                    "product_code": "570_individual",
+                    "sheet_type": "single",
+                    "size_category": "medium_print",
+                    "display_name": f"5x7 ({it.get('finish', '').title()})",
+                    "image_codes": [imgs[0] if imgs else ""],
+                    "framed": False,
+                    "frame_color": "",
+                    "has_frame": False,
+                }
+                new_items.append(single)
+                needed -= 1
+
+            if needed <= 0:
+                continue
+            new_items.append(it)
+        else:
+            new_items.append(it)
+
+    return new_items
