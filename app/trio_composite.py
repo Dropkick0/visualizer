@@ -209,6 +209,7 @@ class TrioCompositeGenerator:
             
         # Create and load composite
         composite = TrioComposite(frame_color, matte_color, size)
+        scale = 1.0
         if not composite.load_composite(self.composites_dir):
             if fallback_to_5x10 and size == "10x20":
                 logger.warning("10x20 composite not found, falling back to 5x10")
@@ -216,6 +217,7 @@ class TrioCompositeGenerator:
                 if not composite.load_composite(self.composites_dir):
                     return None
                 size = "5x10"
+                scale = 2.0
             else:
                 return None
             
@@ -261,6 +263,12 @@ class TrioCompositeGenerator:
                 logger.error(f"Failed to paste image {i+1} onto frame: {e}")
                 continue
         
+        if scale != 1.0:
+            result_image = result_image.resize(
+                (result_image.width * int(scale), result_image.height * int(scale)),
+                Image.Resampling.LANCZOS
+            )
+
         return result_image
     
     def _apply_individual_banner(self, image: Image.Image, image_path: Path) -> Image.Image:
