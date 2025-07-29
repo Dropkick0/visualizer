@@ -2,6 +2,7 @@ from typing import Dict, List
 import re
 
 from .fm_dump_parser import RowTSV as Row, FrameReq as Frame
+from .frame_overlay import FrameSpec
 
 
 def expand_row_to_items(row: Dict, products_cfg: Dict[str, Dict]) -> List[Dict]:
@@ -145,6 +146,8 @@ def apply_frames_to_items_from_meta(items: List[Dict], frame_reqs: List[Frame], 
             if not it.get("frame_color"):
                 it["frame_color"] = info["color"]
                 it["framed"] = True
+                it["has_frame"] = True
+                it["frame_spec"] = FrameSpec(info["size"], info["color"].capitalize())
                 needed -= 1
         fr.qty = needed
 
