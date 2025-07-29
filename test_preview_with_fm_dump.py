@@ -35,7 +35,7 @@ def _expand_extremes(order_items: List[dict]) -> List[dict]:
     return extreme_items
 
 
-def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False) -> bool:
+def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False, debug: bool = False) -> bool:
     products_cfg = load_product_config()
 
     print("\n🔍 Step 1: Load AHK TSV Export")
@@ -88,7 +88,7 @@ def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False) -> bool:
     outdir.mkdir(parents=True, exist_ok=True)
     gen = EnhancedPortraitPreviewGenerator(products_cfg, existing_images, outdir)
     out = outdir / "fm_dump_preview.png"
-    gen.generate_size_based_preview_with_composites(order_items, out, frame_requirements)
+    gen.generate_size_based_preview_with_composites(order_items, out, frame_requirements, debug=debug)
     print(f"✅ Preview saved to {out}")
     return True
 
@@ -97,6 +97,8 @@ if __name__ == "__main__":
     tsv = "fm_dump.tsv"
     extreme = False
 
+    debug = False
+
     if len(sys.argv) > 1:
         if sys.argv[1] == "--extreme":
             extreme = True
@@ -104,5 +106,7 @@ if __name__ == "__main__":
             tsv = sys.argv[1]
             if len(sys.argv) > 2 and sys.argv[2] == "--extreme":
                 extreme = True
+        if "--debug" in sys.argv:
+            debug = True
 
-    run_preview(tsv, extreme)
+    run_preview(tsv, extreme, debug)

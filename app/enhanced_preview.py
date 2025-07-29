@@ -1003,8 +1003,10 @@ class EnhancedPortraitPreviewGenerator:
         right_width_ppi = self.RIGHT_REGION_W / max_right_width if max_right_width > 0 else 120
         right_height_ppi = self.DRAW_H / total_right_height if total_right_height > 0 else 120
         
-        # Find the most restrictive constraint
-        base_ppi = min(left_width_ppi, left_height_ppi, right_width_ppi, right_height_ppi)
+        # Find the most restrictive constraint, respecting both columns
+        left_ppi = min(left_width_ppi, left_height_ppi)
+        right_ppi = min(right_width_ppi, right_height_ppi)
+        base_ppi = min(left_ppi, right_ppi)
         
         # Apply dynamic scaling based on total item count (including composites)
         total_items = sum(len(items) for group, items in groups.items())
@@ -1082,42 +1084,16 @@ class EnhancedPortraitPreviewGenerator:
     def _enforce_safe_zone(self, layout: List[Dict]):
         """Ensure all layout rectangles stay within the safe padding."""
         pad = self.safe_pad_px
-        if not layout:
-            return
-
-        max_x = max(item['x'] + item['width'] for item in layout)
-        max_y = max(item['y'] + item['height'] for item in layout)
-        min_x = min(item['x'] for item in layout)
-        min_y = min(item['y'] for item in layout)
-
-        dx = 0
-        dy = 0
-        if max_x > self.CANVAS_W - pad:
-            dx = (self.CANVAS_W - pad) - max_x
-        if max_y > self.CANVAS_H - pad:
-            dy = (self.CANVAS_H - pad) - max_y
-        if min_x < pad:
-            dx = max(dx, pad - min_x)
-        if min_y < pad:
-            dy = max(dy, pad - min_y)
-
-        if dx or dy:
-            for item in layout:
-                item['x'] += dx
-                item['y'] += dy
-
-        assert all(
-            item['x'] >= pad and item['y'] >= pad and
-            item['x'] + item['width'] <= self.CANVAS_W - pad and
-            item['y'] + item['height'] <= self.CANVAS_H - pad
-            for item in layout
-        )
+        for item in layout:
+            assert item['x'] >= pad and item['y'] >= pad, "Item fell above/left of safe zone"
+            assert item['x'] + item['width'] <= self.CANVAS_W - pad, "Item overflowed right edge"
+            assert item['y'] + item['height'] <= self.CANVAS_H - pad, "Item overflowed bottom edge"
 
     def _draw_product_corrected(self, canvas: Image.Image, position: Dict):
         """Draw product using corrected orientation and master images - includes composites"""
         x, y = position['x'], position['y']
         width, height = position['width'], position['height']
-        spec = position['spec']
+        spec = position.get('spec') or self._find_product_config(position.get('item', {}).get('product_slug', '')) or {}
         item = position['item']
         
         # Check if this is a composite
@@ -1139,13 +1115,14 @@ class EnhancedPortraitPreviewGenerator:
         # Check the sheet type and category to determine rendering method
         sheet_type = position.get('sheet_type', spec.get('sheet_type'))
         
-        if spec['category'] == 'large_print':
+        category = spec.get('category', 'large_print')
+        if category == 'large_print':
             # STEP 22: Render single large print
             self._render_large_print(canvas, x, y, width, height, image_codes, spec, item)
-        elif spec['category'] == 'medium_print' or sheet_type in ['INDIVIDUAL5x7', 'INDIVIDUAL5x7_FRAMED']:
+        elif category == 'medium_print' or sheet_type in ['INDIVIDUAL5x7', 'INDIVIDUAL5x7_FRAMED']:
             # STEP 22: Render individual 5x7 (framed or unframed)
             self._render_large_print(canvas, x, y, width, height, image_codes, spec, item)
-        elif spec['category'] == 'sheet_print':
+        elif category == 'sheet_print':
             # STEP 7: Use specific renderer based on sheet type
             if sheet_type == 'PAIR5x7':
                 self._render_5x7_pair_sheet(canvas, x, y, width, height, image_codes, spec)
@@ -1753,7 +1730,8 @@ class EnhancedPortraitPreviewGenerator:
     
     def generate_size_based_preview_with_composites(self, items: List[Dict], output_filename: str,
                                                    frame_requirements: Dict[str, int] = None,
-                                                   frame_style_preferences: Dict[str, str] = None) -> bool:
+                                                   frame_style_preferences: Dict[str, str] = None,
+                                                   debug: bool = False) -> bool:
         """
         Generate preview with products arranged by size and trio composites on the right
         
@@ -1820,15 +1798,18 @@ class EnhancedPortraitPreviewGenerator:
             
             # Add minimal order info
             self._draw_minimal_summary(canvas, sorted_regular_items + [item for item, _ in trio_items])
-            
+
+            if debug:
+                self._draw_debug_regions(canvas)
+
             # Save preview
             canvas.save(output_filename, 'PNG', quality=95)
             logger.info(f"✅ Enhanced preview with composites saved: {output_filename}")
             
             return True
             
-        except Exception as e:
-            logger.error(f"Error generating enhanced preview with composites: {e}")
+        except Exception:
+            logger.exception("Error generating enhanced preview with composites")
             return False
 
     def _draw_debug_regions(self, canvas: Image.Image):
