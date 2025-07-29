@@ -862,22 +862,14 @@ class EnhancedPortraitPreviewGenerator:
         # Group items by category (now including composites)
         groups = self._group_items_by_category_with_composites(all_items)
         
-        # Calculate unified PPI for all products
-        ppi_unified = self._calculate_optimal_ppi_with_composites(groups)
-        
-        # Calculate reference dimensions
-        eight_w_px = round(8.0 * ppi_unified)
-        eight_h_px = round(10.0 * ppi_unified)
-        
-        logger.info(f"Unified proportional scaling: PPI={ppi_unified:.1f}, includes composites at correct ratios")
-        
-        # Layout left region (regular products)
-        left_layout = self._layout_groups_with_ppi(groups, ppi_unified, eight_w_px, eight_h_px)
-        
-        # Layout right region (composites) using same PPI
-        right_layout = self._layout_composites_with_ppi(groups.get('trio_composite', []), ppi_unified)
-        
-        return left_layout + right_layout
+        # Dynamically solve for PPI that perfectly fits all rows
+        layout, ppi_unified = self._fit_ppi(groups)
+
+        logger.info(
+            f"Unified proportional scaling: PPI={ppi_unified:.1f}, includes composites at correct ratios"
+        )
+
+        return layout
 
     def _group_items_by_category_with_composites(self, items: List[Dict]) -> Dict[str, List[Dict]]:
         """Group items including composites in proper categories"""
@@ -1088,6 +1080,39 @@ class EnhancedPortraitPreviewGenerator:
             logger.debug(f"Composite {spec['container_w_in']}×{spec['container_h_in']} -> {width_px}×{height_px}px at ({x}, {current_y-height_px-gap})")
         
         return layout
+
+    def _layout_with_ppi(self, groups: Dict[str, List[Dict]], ppi: float) -> List[Dict]:
+        """Helper that lays out all products using a given PPI."""
+        eight_w_px = round(8.0 * ppi)
+        eight_h_px = round(10.0 * ppi)
+
+        left_layout = self._layout_groups_with_ppi(groups, ppi, eight_w_px, eight_h_px)
+        right_layout = self._layout_composites_with_ppi(groups.get('trio_composite', []), ppi)
+
+        return left_layout + right_layout
+
+    def _fit_ppi(self, groups: Dict[str, List[Dict]]) -> Tuple[List[Dict], float]:
+        """Binary search the tightest PPI that fits within the canvas."""
+        LOW, HIGH = 5.0, 140.0
+
+        def try_ppi(ppi: float) -> Tuple[List[Dict], float]:
+            layout = self._layout_with_ppi(groups, ppi)
+            used_bottom = max((i['y'] + i['height'] for i in layout), default=0)
+            overflow = used_bottom - (self.CANVAS_H - self.safe_pad_px)
+            return layout, overflow
+
+        lo, hi = LOW, HIGH
+        best_layout = None
+        for _ in range(12):
+            mid = (lo + hi) / 2
+            layout, overflow = try_ppi(mid)
+            if overflow <= 0:
+                best_layout = layout
+                lo = mid
+            else:
+                hi = mid
+
+        return best_layout if best_layout is not None else [], lo
 
     def _enforce_safe_zone(self, layout: List[Dict]):
         """Ensure all layout rectangles stay within the safe padding."""
