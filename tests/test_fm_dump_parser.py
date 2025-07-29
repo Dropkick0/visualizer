@@ -1,5 +1,7 @@
 from pathlib import Path
 from app.fm_dump_parser import parse_fm_dump
+from app.order_from_tsv import rows_to_order_items
+from app.config import load_product_config
 
 
 def test_parse_fm_dump_basic():
@@ -12,3 +14,16 @@ def test_parse_fm_dump_basic():
     assert first.code == "1013"
     assert first.imgs == ["0033"]
     assert parsed.frames[0].frame_no == "229"
+
+
+def test_complimentary_deduplicated():
+    tsv_path = Path(__file__).resolve().parents[1] / "fm_dump.tsv"
+    parsed = parse_fm_dump(str(tsv_path))
+    products_cfg = load_product_config()
+    items = rows_to_order_items(parsed.rows, parsed.frames, products_cfg, parsed.retouch_imgs, None)
+    comp_count = sum(
+        1
+        for it in items
+        if it.get("complimentary") and "8x10" in it["display_name"]
+    )
+    assert comp_count == 1

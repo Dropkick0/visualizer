@@ -85,14 +85,20 @@ def parse_fm_dump(tsv_path: str) -> ParsedOrder:
         order_rows.append(RowTSV(idx=i, qty=qty, code=code, desc=desc or None, imgs=imgs, artist_series=artist))
 
     pose_img = by_label.get('Directory Pose Image #', '').strip()
+    pose_code = by_label.get('Directory Pose Order #', '').strip() or '001'
     if pose_img:
-        already_added = any(
-            r.code == (by_label.get('Directory Pose Order #', '').strip() or '002')
-            and r.complimentary
-            for r in order_rows
+        dup = next(
+            (
+                r
+                for r in order_rows
+                if r.code == pose_code and set(r.imgs) == {pose_img.zfill(4)}
+            ),
+            None,
         )
-        if not already_added:
-            pose_code = by_label.get('Directory Pose Order #', '').strip() or '002'
+        if dup:
+            dup.complimentary = True
+            dup.qty = 1
+        else:
             order_rows.append(
                 RowTSV(
                     idx=0,
@@ -104,6 +110,17 @@ def parse_fm_dump(tsv_path: str) -> ParsedOrder:
                     complimentary=True,
                 )
             )
+
+    unique = {}
+    for r in order_rows:
+        key = (r.code, tuple(r.imgs))
+        if key not in unique:
+            unique[key] = r
+        else:
+            if r.complimentary:
+                unique[key].complimentary = True
+            unique[key].qty = max(unique[key].qty or 1, r.qty or 1)
+    order_rows = list(unique.values())
 
     parsed = ParsedOrder(
         rows=order_rows,
