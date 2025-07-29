@@ -105,3 +105,42 @@ def frames_to_counts(frames: List[Frame]) -> Dict[str, Dict[str, int]]:
         counts.setdefault(size, {}).setdefault(color, 0)
         counts[size][color] += fr.qty
     return counts
+
+
+def apply_frames_to_items_from_meta(items: List[Dict], frame_reqs: List[Frame], meta: Dict[str, Dict]):
+    """Assign frames to items based on frame metadata and requested quantities."""
+    # Build size->list mapping of items that can receive frames
+    size_to_items: Dict[str, List[Dict]] = {}
+    for it in items:
+        if it.get("size_category") != "large_print" or it.get("frame_color"):
+            continue
+        size = _extract_size_from_item(it)
+        if size:
+            size_to_items.setdefault(size, []).append(it)
+
+    for fr in frame_reqs:
+        info = meta.get(fr.frame_no)
+        if not info:
+            continue
+        remaining = fr.qty or 0
+        bucket = size_to_items.get(info["size"], [])
+        for it in bucket:
+            if remaining <= 0:
+                break
+            if not it.get("frame_color"):
+                it["frame_color"] = info["color"]
+                it["framed"] = True
+                remaining -= 1
+
+
+def _extract_size_from_item(item: Dict) -> str | None:
+    """Try to extract a size label like '8x10' from an item."""
+    slug = item.get("product_slug", "")
+    m = re.search(r"(\d+x\d+)", slug)
+    if m:
+        return m.group(1)
+    name = item.get("display_name", "")
+    m = re.search(r"(\d+x\d+)", name)
+    if m:
+        return m.group(1)
+    return None
