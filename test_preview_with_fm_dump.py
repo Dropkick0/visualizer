@@ -30,7 +30,7 @@ def run_preview(tsv_path: str = "fm_dump.tsv") -> bool:
     image_codes = [c for r in rows for c in r.imgs]
 
     print("\n🔄 Step 2: Convert rows to order items")
-    order_items = rows_to_order_items(rows, parsed.frames, products_cfg, parsed.retouch_imgs, parsed)
+    order_items = rows_to_order_items(rows, parsed.frames, products_cfg, parsed.retouch_imgs)
     print(f"✅ Created {len(order_items)} order items")
     from pprint import pprint
     print("\n🔎 ORDER ITEM SNAPSHOT (first 15)")
