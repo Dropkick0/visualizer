@@ -1419,8 +1419,8 @@ class EnhancedPortraitPreviewGenerator:
         master_img = self.master_images[image_code]
         
         # Check if this item has a frame
-        if item and item.get('has_frame') and item.get('frame_spec'):
-            frame_spec = item.get('frame_spec')
+        if item and (item.get('has_frame') or item.get('framed')):
+            frame_spec = item.get('frame_spec') or FrameSpec("5x7", item.get('frame_color', 'Black').capitalize())
             
             # Calculate the inner image size (original container minus frame thickness)
             inner_width = width - frame_spec.left_thickness - frame_spec.right_thickness
