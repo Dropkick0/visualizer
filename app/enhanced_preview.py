@@ -2986,19 +2986,20 @@ class EnhancedPortraitPreviewGenerator:
             if not item:
                 return
                 
-            # Check for Artist Series
-            is_artist_series = self._is_artist_series(item, spec)
-            
-            # Check for Retouch (if any image codes or item flag indicate it)
-            is_retouch = self._is_retouch(image_codes or [], item)
-            
-            # Determine banner text
+            # Determine banner needs directly from item flags
+            needs_retouch = item.get("retouch", False)
+            needs_artist = item.get("artist_series", False)
+
+            if not (needs_retouch or needs_artist):
+                return
+
+            # Build banner text from the flags
             banner_text = None
-            if is_artist_series and is_retouch:
+            if needs_artist and needs_retouch:
                 banner_text = "ARTIST SERIES + RETOUCH"
-            elif is_artist_series:
+            elif needs_artist:
                 banner_text = "ARTIST SERIES"
-            elif is_retouch:
+            elif needs_retouch:
                 banner_text = "RETOUCH"
             
             # Only draw banner if one of the conditions is met
