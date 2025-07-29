@@ -68,64 +68,10 @@ def _sort_large_print(items: List[Dict]) -> List[Dict]:
     return normal + comp
 
 
-def explode_5x7_pairs_for_frames(items: List[Dict], frame_reqs: List[FrameReq], frame_meta: Dict[str, Dict[str, str]]):
-    """Split 5x7 pair sheets into singles when frames are requested."""
-    needed = 0
-    for fr in frame_reqs:
-        info = frame_meta.get(fr.frame_no)
-        if info and info.get("size") == "5x7":
-            needed += fr.qty or 0
-
-    if needed == 0:
-        return items
-
-    new_items = []
-    for it in items:
-        if (
-            it.get("product_slug") == "ALL_5x7"
-            and it.get("sheet_type") == "landscape_2x1"
-            and needed > 0
-        ):
-            imgs = it.get("image_codes", []) or ["0000"]
-            for i in range(2):
-                if needed <= 0:
-                    break
-                single = {
-                    **it,
-                    "sheet_type": "single",
-                    "display_name": f"5x7 ({it['finish'].title()})",
-                    "quantity": 1,
-                    "image_codes": [imgs[0]],
-                    "framed": False,
-                    "frame_color": "",
-                }
-                new_items.append(single)
-                needed -= 1
-        else:
-            new_items.append(it)
-    return new_items
-
-
-def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg: Dict, retouch_imgs: List[str], parsed=None) -> List[Dict]:
+def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg: Dict, retouch_imgs: List[str]) -> List[Dict]:
     """Convert TSV rows to order item dictionaries."""
     items: List[Dict] = []
     retouch_set = set(retouch_imgs or [])
-
-    # ---- complimentary 8x10 injection ----
-    if parsed is not None and getattr(parsed, "dir_pose_code", None):
-        code = str(parsed.dir_pose_code).zfill(3)
-        if code in PRODUCTS and PRODUCTS[code].get("type") == "complimentary_8x10":
-            img_code = str(parsed.dir_pose_img or "").zfill(4)
-            comp_row = RowTSV(
-                idx=0,
-                qty=1,
-                code=code,
-                desc="Directory Pose Complimentary",
-                imgs=[img_code],
-                artist_series=False,
-                complimentary=True,
-            )
-            rows.append(comp_row)
 
     for row in rows:
         if not row.code:
@@ -214,9 +160,6 @@ def rows_to_order_items(rows: List[RowTSV], frames: List[FrameReq], products_cfg
                     "display_name": f"{size} {base['finish'].title()}",
                 }
                 items.append(item)
-
-    # split 5x7 pairs into singles if frames are requested
-    items = explode_5x7_pairs_for_frames(items, frames, FRAME_META)
 
     # apply frames using metadata
     apply_frames_to_items_from_meta(items, frames, FRAME_META)
