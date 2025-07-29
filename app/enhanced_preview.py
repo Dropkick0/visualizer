@@ -9,7 +9,6 @@ from typing import List, Dict, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from loguru import logger
 import math
-import re
 
 # Import trio composite functionality
 from .trio_composite import TrioCompositeGenerator, is_trio_product
@@ -1142,21 +1141,21 @@ class EnhancedPortraitPreviewGenerator:
                         customer_images.append(None)
             
             # Extract trio details
-            frame_color = item.get('frame_color', 'black').capitalize()
-            matte_color = item.get('matte_color', 'white').capitalize()
-
-            size_label = "5x10"
-            m = re.search(r'trio_(\d+x\d+)_', item.get('product_slug', ''))
-            if m:
-                size_label = m.group(1)
-
-            logger.debug(f"Generating composite: {size_label}, frame={frame_color}, matte={matte_color}")
-
+            frame_color = item.get('frame_color', 'Black')
+            matte_color = item.get('matte_color', 'White')
+            
+            # FIX: Always use "5x10" for file lookup - larger composites just scale the same base file
+            # All composite files are named "5x10" regardless of target size
+            base_size = "5x10"
+            
+            logger.debug(f"Generating composite: {base_size}, frame={frame_color}, matte={matte_color}")
+            
+            # Generate the composite using the base size for file lookup
             composite_image = self.trio_generator.create_composite(
                 customer_images=customer_images,
                 frame_color=frame_color,
                 matte_color=matte_color,
-                size=size_label
+                size=base_size  # Always use "5x10" for file lookup
             )
             
             if composite_image:
