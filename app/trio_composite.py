@@ -155,6 +155,37 @@ class TrioCompositeGenerator:
             ("Black", "Black"), ("Black", "Gray"), ("Black", "White"), ("Black", "Tan"),
             ("Cherry", "Black"), ("Cherry", "Gray"), ("Cherry", "White"), ("Cherry", "Tan")
         ]
+    
+    def _normalize_matte_color(self, matte_color: str) -> str:
+        """Normalize matte color names to match composite file names"""
+        color_lower = matte_color.lower()
+        
+        # Map color variations to actual composite file names
+        if color_lower in ['creme', 'cream', 'biege', 'beige', 'tan']:
+            return "Tan"
+        elif color_lower in ['white']:
+            return "White"
+        elif color_lower in ['black']:
+            return "Black"
+        elif color_lower in ['gray', 'grey']:
+            return "Gray"
+        else:
+            # Default to Tan for unknown colors (matches user preference)
+            logger.debug(f"Unknown matte color '{matte_color}', defaulting to Tan")
+            return "Tan"
+    
+    def _normalize_frame_color(self, frame_color: str) -> str:
+        """Normalize frame color names to match composite file names"""
+        color_lower = frame_color.lower()
+        
+        if color_lower in ['cherry']:
+            return "Cherry"
+        elif color_lower in ['black']:
+            return "Black"
+        else:
+            # Default to Black for unknown colors
+            logger.debug(f"Unknown frame color '{frame_color}', defaulting to Black")
+            return "Black"
         
     def create_composite_from_product(self, 
                                     product: Dict,
@@ -200,6 +231,10 @@ class TrioCompositeGenerator:
         Returns:
             Composite image with customer images overlaid, or None if failed
         """
+        
+        # Normalize color names to match composite file names
+        matte_color = self._normalize_matte_color(matte_color)
+        frame_color = self._normalize_frame_color(frame_color)
         
         # Validate frame/matte combination
         if (frame_color, matte_color) not in self.available_combinations:
