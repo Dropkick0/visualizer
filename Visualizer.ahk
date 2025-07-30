@@ -5,6 +5,10 @@ global TotalFields := 103
 global ClipTimeoutMs := 80
 global InterKeyDelay := 10
 global OutputFile := A_Temp "\fm_dump.tsv"
+global PreviewImg := A_ScriptDir "\app\static\previews\fm_dump_preview.png"
+global PyScript := A_ScriptDir "\test_preview_with_fm_dump.py"
+global PythonExe := "python"
+global gShootDir := ""
 
 ; FM window match
 global FMExe := "ahk_exe FileMaker Pro.exe"
@@ -48,6 +52,15 @@ global FieldLabels := [
 ]
 ;-----------------------------------------
 
+; ====== AUTO-EXECUTE ======
+gShootDir := FileSelectFolder("Select Photographer Folder for the Day")
+if (!gShootDir) {
+    MsgBox "Folder not selected – exiting."
+    ExitApp
+}
+EnvSet "DROPBOX_ROOT", gShootDir
+return
+
 NumpadMult:: RunDump()
 Esc:: ExitApp
 
@@ -90,6 +103,13 @@ RunDump() {
     file := FileOpen(OutputFile, "w", "UTF-8")
     file.Write(buffer)
     file.Close()
+
+    cmd := Format('"%s" "%s" "%s"', PythonExe, PyScript, OutputFile)
+    RunWait cmd,, "Hide"
+    if (FileExist(PreviewImg))
+        Run PreviewImg
+    else
+        MsgBox "Preview image not found:`n" PreviewImg, "Warning", "Icon!"
 
     ; copy just values as TSV row if you still want that
     row := ""
