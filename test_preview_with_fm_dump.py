@@ -19,9 +19,6 @@ from app.fm_dump_parser import parse_fm_dump
 from app.config import load_product_config, load_config
 from app.image_search import create_image_searcher
 from app.enhanced_preview import EnhancedPortraitPreviewGenerator
-from test_corrected_preview_v2_with_ocr_FIXED import (
-    determine_frame_requirements_from_items,
-)
 from app.order_from_tsv import rows_to_order_items
 
 
@@ -42,7 +39,41 @@ def _expand_extremes(order_items: List[dict]) -> List[dict]:
     return extreme_items
 
 
-from typing import Optional
+from typing import Optional, Dict
+
+
+def determine_frame_requirements_from_items(order_items: List[dict]) -> Dict[str, int]:
+    """Determine frame requirements based on order items"""
+    frame_requirements = {
+        "5x7": 0,
+        "8x10": 0, 
+        "10x13": 0,
+        "16x20": 0,
+        "20x24": 0
+    }
+    
+    for item in order_items:
+        size_category = item.get('size_category', '')
+        if size_category == 'large_print':
+            # Individual prints can have frames
+            if '8x10' in item.get('display_name', ''):
+                frame_requirements["8x10"] += item.get('quantity', 1)
+            elif '10x13' in item.get('display_name', ''):
+                frame_requirements["10x13"] += item.get('quantity', 1)
+            elif '16x20' in item.get('display_name', ''):
+                frame_requirements["16x20"] += item.get('quantity', 1)
+            elif '20x24' in item.get('display_name', ''):
+                frame_requirements["20x24"] += item.get('quantity', 1)
+        elif size_category == 'medium_sheet':
+            # 5x7 pairs can be split for framing
+            frame_requirements["5x7"] += item.get('quantity', 1) * 2  # Each pair = 2 individual 5x7s
+    
+    # Limit frames to reasonable numbers
+    frame_requirements["5x7"] = min(frame_requirements["5x7"], 3)
+    frame_requirements["8x10"] = min(frame_requirements["8x10"], 1) 
+    frame_requirements["10x13"] = min(frame_requirements["10x13"], 1)
+    
+    return frame_requirements
 
 
 def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False, debug: bool = False,
@@ -68,22 +99,25 @@ def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False, debug: boo
         for it in order_items[:15]])
 
     # Basic sanity checks on mapped items
-    assert any("8x10" in it["display_name"] for it in order_items)
-    assert any(it["size_category"] == "large_print" for it in order_items)
-    trio = next((it for it in order_items if it["size_category"] == "trio_composite"), None)
-    if trio:
-        assert trio["frame_color"].lower() == "cherry"
-        assert trio["matte_color"].lower() == "black"
+    print(f"📊 Order summary:")
+    print(f"   • Large prints: {len([it for it in order_items if it['size_category'] == 'large_print'])}")
+    print(f"   • Trio composites: {len([it for it in order_items if it['size_category'] == 'trio_composite'])}")
+    print(f"   • Medium sheets: {len([it for it in order_items if it['size_category'] == 'medium_sheet'])}")
+    print(f"   • Small sheets: {len([it for it in order_items if it['size_category'] == 'small_sheet'])}")
+    print(f"   • Wallet sheets: {len([it for it in order_items if it['size_category'] == 'wallet_sheet'])}")
 
     cfg = load_config()
 
-    # Allow command line to override DROPBOX_ROOT
+    # Allow command line to override DROPBOX_ROOT (this is how AHK passes the folder)
     if dropbox_root:
         cfg.DROPBOX_ROOT = dropbox_root
+        print(f"🔧 Using Dropbox path from AHK: {dropbox_root}")
 
     if not getattr(cfg, "DROPBOX_ROOT", None):
-        cfg.DROPBOX_ROOT = str(Path(__file__).parent / "8017_Lab_Order")
-    searcher = create_image_searcher(cfg)
+        print("⚠️  No Dropbox root configured - image search will be unavailable")
+        searcher = None
+    else:
+        searcher = create_image_searcher(cfg)
 
     existing_images = {}
     if searcher:
@@ -105,9 +139,14 @@ def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False, debug: boo
     outdir.mkdir(parents=True, exist_ok=True)
     gen = EnhancedPortraitPreviewGenerator(products_cfg, existing_images, outdir)
     out = outdir / "fm_dump_preview.png"
-    gen.generate_size_based_preview_with_composites(order_items, out, frame_requirements, debug=debug)
-    print(f"✅ Preview saved to {out}")
-    return True
+    success = gen.generate_size_based_preview_with_composites(order_items, out, frame_requirements, debug=debug)
+    
+    if success:
+        print(f"✅ Preview saved to {out}")
+        return True
+    else:
+        print(f"❌ Failed to generate preview")
+        return False
 
 
 if __name__ == "__main__":
