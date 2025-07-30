@@ -189,13 +189,8 @@ def create_image_searcher(config) -> Optional[DropboxImageSearcher]:
     dropbox_root = getattr(config, 'DROPBOX_ROOT', None)
     
     if not dropbox_root:
-        # Try default path - UPDATED to new folder path
-        default_path = "C:/Users/remem/Re MEMBER Dropbox/PHOTOGRAPHY PROOFING/PHOTOGRAPHER UPLOADS (1)/Ethan/From/8017 Lab Order"
-        if Path(default_path).exists():
-            dropbox_root = default_path
-            logger.info(f"Using default Dropbox path: {dropbox_root}")
-        else:
-            logger.warning("No Dropbox root path configured and default path not found")
-            return None
+        logger.warning("No Dropbox root path configured - AHK should have set DROPBOX_ROOT")
+        return None
     
+    logger.info(f"Using Dropbox path from config: {dropbox_root}")
     return DropboxImageSearcher(dropbox_root) 
