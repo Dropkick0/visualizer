@@ -53,7 +53,9 @@ global FieldLabels := [
 ;-----------------------------------------
 
 ; ====== AUTO-EXECUTE ======
+
 gShootDir := DirSelect("", 3, "Select Photographer Folder for the Day")
+
 if (!gShootDir) {
     MsgBox "Folder not selected – exiting."
     ExitApp
@@ -104,10 +106,12 @@ RunDump() {
     file.Write(buffer)
     file.Close()
 
+
     ; Build the python command using proper Format placeholders
     ; AutoHotkey's Format() uses {} not %s, so %s produced the literal string
     ; "%s" "%s" "%s" and failed to execute.
     cmd := Format('"{}" "{}" "{}"', PythonExe, PyScript, OutputFile)
+
     RunWait cmd,, "Hide"
     if (FileExist(PreviewImg))
         Run PreviewImg
