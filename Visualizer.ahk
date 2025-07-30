@@ -53,7 +53,8 @@ global FieldLabels := [
 ;-----------------------------------------
 
 ; ====== AUTO-EXECUTE ======
-FileSelectFolder "Select Photographer Folder for the Day",, 3, &gShootDir
+gShootDir := FileSelectFolder("Select Photographer Folder for the Day")
+
 if (!gShootDir) {
     MsgBox "Folder not selected – exiting."
     ExitApp
