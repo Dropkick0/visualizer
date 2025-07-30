@@ -106,7 +106,12 @@ RunDump() {
     file.Write(buffer)
     file.Close()
 
-    cmd := Format('"%s" "%s" "%s"', PythonExe, PyScript, OutputFile)
+
+    ; Build the python command using proper Format placeholders
+    ; AutoHotkey's Format() uses {} not %s, so %s produced the literal string
+    ; "%s" "%s" "%s" and failed to execute.
+    cmd := Format('"{}" "{}" "{}"', PythonExe, PyScript, OutputFile)
+
     RunWait cmd,, "Hide"
     if (FileExist(PreviewImg))
         Run PreviewImg
