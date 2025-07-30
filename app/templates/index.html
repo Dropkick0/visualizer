@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Field Order Screenshot - Portrait Preview{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h1 class="display-5">Portrait Preview Generator</h1>
+            <p class="lead text-muted">
+                Upload a FileMaker Field Order screenshot and specify the Sit Folder to generate a customer preview
+            </p>
+        </div>
+
+        <!-- Instructions Card -->
+        <div class="card mb-4 border-info">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Quick Instructions</h5>
+            </div>
+            <div class="card-body">
+                <ol class="mb-0">
+                    <li><strong>Take Screenshot:</strong> Open FileMaker Item Entry layout at 100% zoom, ensure full PORTRAITS table is visible</li>
+                    <li><strong>Get Folder Path:</strong> Navigate to the Sit Folder in Dropbox, right-click and copy path</li>
+                    <li><strong>Upload & Process:</strong> Complete the form below and click Generate Preview</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Upload Form -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Generate Preview</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('main.process') }}" enctype="multipart/form-data" id="uploadForm">
+                    
+                    <!-- Screenshot Upload -->
+                    <div class="mb-4">
+                        <label for="screenshot" class="form-label">
+                            <i class="fas fa-image me-2"></i>Field Order Screenshot <span class="text-danger">*</span>
+                        </label>
+                        <input type="file" 
+                               class="form-control" 
+                               id="screenshot" 
+                               name="screenshot" 
+                               accept="image/*" 
+                               required>
+                        <div class="form-text">
+                            Upload PNG, JPG, or TIFF image of the FileMaker Item Entry screen. Max 20MB.
+                        </div>
+                        <div class="invalid-feedback" id="screenshot-error"></div>
+                    </div>
+
+                    <!-- Sit Folder Path -->
+                    <div class="mb-4">
+                        <label for="sit_folder_path" class="form-label">
+                            <i class="fas fa-folder me-2"></i>Sit Folder Path <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="sit_folder_path" 
+                               name="sit_folder_path" 
+                               placeholder="C:\Users\remem\Re MEMBER Dropbox\PHOTOGRAPHY PROOFING\PHOTOGRAPHER UPLOADS (1)\7-15 Brent Price\bp071525.1"
+                               required>
+                        <div class="form-text">
+                            Paste the full path to the folder containing the customer's image files. 
+                            <a href="#" onclick="showPathHelp()" class="text-decoration-none">Need help finding the path?</a>
+                        </div>
+                        <div class="invalid-feedback" id="folder-error"></div>
+                    </div>
+
+                    <!-- Background Selection -->
+                    <div class="mb-4">
+                        <label for="background" class="form-label">
+                            <i class="fas fa-palette me-2"></i>Background
+                        </label>
+                        <select class="form-select" id="background" name="background">
+                            {% for bg in backgrounds %}
+                                <option value="{{ bg.filename }}" 
+                                        {% if bg.filename == default_background %}selected{% endif %}>
+                                    {{ bg.display_name }}
+                                </option>
+                            {% else %}
+                                <option value="{{ default_background }}">{{ default_background }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            Choose the background for the preview. Default works for most situations.
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                            <i class="fas fa-magic me-2"></i>Generate Preview
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Tips Card -->
+        <div class="card mt-4 border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h6 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Tips for Best Results</h6>
+            </div>
+            <div class="card-body">
+                <ul class="mb-0 small">
+                    <li>Capture the FileMaker window at 100% zoom for clearest text</li>
+                    <li>Ensure the entire PORTRAITS table is visible in the screenshot</li>
+                    <li>Include the Image Code column (4-digit numbers) on the right</li>
+                    <li>Double-check the Sit Folder path - typos will prevent image matching</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Path Help Modal -->
+<div class="modal fade" id="pathHelpModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Finding the Sit Folder Path</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ol>
+                    <li>Open Windows File Explorer</li>
+                    <li>Navigate to the customer's folder in Dropbox</li>
+                    <li>Right-click on the folder name in the address bar</li>
+                    <li>Select "Copy address as text"</li>
+                    <li>Paste the path into the form above</li>
+                </ol>
+                <div class="alert alert-info mt-3">
+                    <strong>Example path:</strong><br>
+                    <code>C:\Users\remem\Re MEMBER Dropbox\PHOTOGRAPHY PROOFING\PHOTOGRAPHER UPLOADS (1)\7-15 Brent Price\bp071525.1</code>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Form validation and loading state
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    const submitBtn = document.getElementById('submitBtn');
+    const screenshot = document.getElementById('screenshot');
+    const folderPath = document.getElementById('sit_folder_path');
+    
+    // Reset validation states
+    screenshot.classList.remove('is-invalid');
+    folderPath.classList.remove('is-invalid');
+    
+    let isValid = true;
+    
+    // Validate screenshot
+    if (!screenshot.files || screenshot.files.length === 0) {
+        screenshot.classList.add('is-invalid');
+        document.getElementById('screenshot-error').textContent = 'Please select a screenshot file.';
+        isValid = false;
+    } else {
+        const file = screenshot.files[0];
+        if (file.size > 20 * 1024 * 1024) {
+            screenshot.classList.add('is-invalid');
+            document.getElementById('screenshot-error').textContent = 'File too large. Maximum size is 20MB.';
+            isValid = false;
+        }
+    }
+    
+    // Validate folder path
+    if (!folderPath.value.trim()) {
+        folderPath.classList.add('is-invalid');
+        document.getElementById('folder-error').textContent = 'Please enter the Sit Folder path.';
+        isValid = false;
+    }
+    
+    if (!isValid) {
+        e.preventDefault();
+        return false;
+    }
+    
+    // Show loading state
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing...';
+    submitBtn.disabled = true;
+});
+
+function showPathHelp() {
+    const modal = new bootstrap.Modal(document.getElementById('pathHelpModal'));
+    modal.show();
+}
+
+function showHelp() {
+    alert('Portrait Preview Webapp Help:\n\n1. Take a clear screenshot of the FileMaker Item Entry screen\n2. Copy the path to the customer\'s image folder from Dropbox\n3. Upload and wait for the preview to generate\n\nFor technical support, contact the development team.');
+}
+</script>
+{% endblock %} 

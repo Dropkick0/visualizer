@@ -1,0 +1,10 @@
+Flask
+loguru
+python-dotenv
+pydantic
+PyYAML
+Pillow
+numpy
+opencv-python
+python-magic   # optional, used if installed
+winocr         # optional Windows-only OCR support

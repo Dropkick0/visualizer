@@ -1,0 +1,66 @@
+[14:00:00] 🚀 PORTRAIT VISUALIZER STARTING
+[14:00:00] ==================================================
+[14:00:00] 📝 Command line args: ['test_preview_with_fm_dump.py', 'fm_dump.tsv', 'test_path']
+[14:00:00] 📁 Current working directory: C:\Users\remem\Desktop\visualizer-main
+[14:00:00] 🐍 Python version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+[14:00:00] 📦 Script location: C:\Users\remem\Desktop\visualizer-main\test_preview_with_fm_dump.py
+[14:00:00] 🔧 Processing args: ['fm_dump.tsv', 'test_path']
+[14:00:00] 📄 TSV file: fm_dump.tsv
+[14:00:00] 📁 Dropbox folder: test_path
+[14:00:00] 📋 Final parameters:
+[14:00:00]    • TSV: fm_dump.tsv
+[14:00:00]    • Dropbox: test_path
+[14:00:00]    • Extreme: False
+[14:00:00] ==================================================
+[14:00:00] 🔄 Starting run_preview function...
+[14:00:01] ==================================================
+[14:00:01] 🏁 FINAL RESULT: SUCCESS
+[14:00:01] ==================================================
+[14:00:19] 🚀 PORTRAIT VISUALIZER STARTING
+[14:00:19] ==================================================
+[14:00:19] 📝 Command line args: ['test_preview_with_fm_dump.py', 'fm_dump.tsv', 'test_path']
+[14:00:19] 📁 Current working directory: C:\Users\remem\Desktop\visualizer-main
+[14:00:19] 🐍 Python version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+[14:00:19] 📦 Script location: C:\Users\remem\Desktop\visualizer-main\test_preview_with_fm_dump.py
+[14:00:19] 🔧 Processing args: ['fm_dump.tsv', 'test_path']
+[14:00:19] 📄 TSV file: fm_dump.tsv
+[14:00:19] 📁 Dropbox folder: test_path
+[14:00:19] 📋 Final parameters:
+[14:00:19]    • TSV: fm_dump.tsv
+[14:00:19]    • Dropbox: test_path
+[14:00:19]    • Extreme: False
+[14:00:19] ==================================================
+[14:00:19] 🔄 Starting run_preview function...
+[14:00:20] ==================================================
+[14:00:20] 🏁 FINAL RESULT: SUCCESS
+[14:00:20] ==================================================
+[14:00:32] 🚀 PORTRAIT VISUALIZER STARTING
+[14:00:32] ==================================================
+[14:00:32] 📝 Command line args: ['test_preview_with_fm_dump.py', 'nonexistent.tsv', 'test_path']
+[14:00:32] 📁 Current working directory: C:\Users\remem\Desktop\visualizer-main
+[14:00:32] 🐍 Python version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+[14:00:32] 📦 Script location: C:\Users\remem\Desktop\visualizer-main\test_preview_with_fm_dump.py
+[14:00:32] 🔧 Processing args: ['nonexistent.tsv', 'test_path']
+[14:00:32] 📄 TSV file: nonexistent.tsv
+[14:00:32] 📁 Dropbox folder: test_path
+[14:00:32] 📋 Final parameters:
+[14:00:32]    • TSV: nonexistent.tsv
+[14:00:32]    • Dropbox: test_path
+[14:00:32]    • Extreme: False
+[14:00:32] ==================================================
+[14:00:32] 🔄 Starting run_preview function...
+[14:00:32] ==================================================
+[14:00:32] 💥 FATAL ERROR: [Errno 2] No such file or directory: 'nonexistent.tsv'
+[14:00:32] 💥 Stack trace: Traceback (most recent call last):
+  File "C:\Users\remem\Desktop\visualizer-main\test_preview_with_fm_dump.py", line 316, in <module>
+    result = run_preview(tsv, extreme, dropbox_arg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\remem\Desktop\visualizer-main\test_preview_with_fm_dump.py", line 84, in run_preview
+    parsed = parse_fm_dump(tsv_path)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\remem\Desktop\visualizer-main\app\fm_dump_parser.py", line 50, in parse_fm_dump
+    with open(tsv_path, newline='', encoding='utf-8-sig') as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'nonexistent.tsv'
+
+[14:00:32] ==================================================
