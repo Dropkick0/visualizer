@@ -60,9 +60,6 @@ if (!gShootDir) {
     MsgBox "Folder not selected – exiting."
     ExitApp
 }
-; Remove any trailing backslash to avoid quoting issues when launching Python
-if (SubStr(gShootDir, -1) == "\\")
-    gShootDir := SubStr(gShootDir, 1, -1)
 EnvSet "DROPBOX_ROOT", gShootDir
 return
 
