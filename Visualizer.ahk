@@ -107,10 +107,11 @@ RunDump() {
     file.Close()
 
 
-    ; Build the python command using proper Format placeholders
+    ; Build the python command using proper Format placeholders.
+    ; Pass the TSV path and the selected Dropbox folder to Python.
     ; AutoHotkey's Format() uses {} not %s, so %s produced the literal string
     ; "%s" "%s" "%s" and failed to execute.
-    cmd := Format('"{}" "{}" "{}"', PythonExe, PyScript, OutputFile)
+    cmd := Format('"{}" "{}" "{}" "{}"', PythonExe, PyScript, OutputFile, gShootDir)
 
     RunWait cmd,, "Hide"
     if (FileExist(PreviewImg))

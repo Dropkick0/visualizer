@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Generate a preview using the AHK TSV dump instead of OCR."""
+"""Generate a preview using the AHK TSV dump instead of OCR.
+
+Optional command line usage::
+    python test_preview_with_fm_dump.py [tsv_path] [dropbox_root] [--extreme] [--debug]
+
+If ``dropbox_root`` is provided, it overrides the ``DROPBOX_ROOT`` environment
+variable.
+"""
 
 import sys
 from pathlib import Path
@@ -35,7 +42,11 @@ def _expand_extremes(order_items: List[dict]) -> List[dict]:
     return extreme_items
 
 
-def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False, debug: bool = False) -> bool:
+from typing import Optional
+
+
+def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False, debug: bool = False,
+                dropbox_root: Optional[str] = None) -> bool:
     products_cfg = load_product_config()
 
     print("\n🔍 Step 1: Load AHK TSV Export")
@@ -65,6 +76,11 @@ def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False, debug: boo
         assert trio["matte_color"].lower() == "black"
 
     cfg = load_config()
+
+    # Allow command line to override DROPBOX_ROOT
+    if dropbox_root:
+        cfg.DROPBOX_ROOT = dropbox_root
+
     if not getattr(cfg, "DROPBOX_ROOT", None):
         cfg.DROPBOX_ROOT = str(Path(__file__).parent / "8017_Lab_Order")
     searcher = create_image_searcher(cfg)
@@ -96,18 +112,22 @@ def run_preview(tsv_path: str = "fm_dump.tsv", extreme: bool = False, debug: boo
 
 if __name__ == "__main__":
     tsv = "fm_dump.tsv"
+    dropbox_arg: Optional[str] = None
     extreme = False
-
     debug = False
 
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--extreme":
-            extreme = True
+    args = sys.argv[1:]
+    if args:
+        tsv = args[0]
+        if len(args) > 1 and not args[1].startswith("--"):
+            dropbox_arg = args[1]
+            args = args[2:]
         else:
-            tsv = sys.argv[1]
-            if len(sys.argv) > 2 and sys.argv[2] == "--extreme":
-                extreme = True
-        if "--debug" in sys.argv:
+            args = args[1:]
+
+        if "--extreme" in args:
+            extreme = True
+        if "--debug" in args:
             debug = True
 
-    run_preview(tsv, extreme, debug)
+    run_preview(tsv, extreme, debug, dropbox_arg)
