@@ -4,7 +4,7 @@ global StartTabs := 6
 global TotalFields := 103
 global ClipTimeoutMs := 80
 global InterKeyDelay := 10
-global OutputFile := A_Temp "\fm_dump.tsv"
+global OutputFile := A_ScriptDir "\fm_dump.tsv"
 global PreviewImg := A_ScriptDir "\app\static\previews\fm_dump_preview.png"
 global PyScript := A_ScriptDir "\test_preview_with_fm_dump.py"
 global PythonExe := "python"
@@ -115,12 +115,21 @@ RunDump() {
     ; AutoHotkey's Format() uses {} not %s, so %s produced the literal string
     ; "%s" "%s" "%s" and failed to execute.
     cmd := Format('"{}" "{}" "{}" "{}"', PythonExe, PyScript, OutputFile, gShootDir)
-
-    RunWait cmd,, "Hide"
-    if (FileExist(PreviewImg))
-        Run PreviewImg
-    else
-        MsgBox "Preview image not found:`n" PreviewImg, "Warning", "Icon!"
+    
+    ; Show what we're about to run (for debugging)
+    ; MsgBox "Running command:`n" cmd, "Debug", "Iconi"
+    
+    try {
+        RunWait cmd, A_ScriptDir, "Hide"
+        if (FileExist(PreviewImg)) {
+            Run PreviewImg
+            MsgBox "Preview generated successfully!`nOpening: " PreviewImg, "Success", "Iconi"
+        } else {
+            MsgBox "Preview image not found:`n" PreviewImg "`n`nCheck if Python script ran successfully.", "Warning", "Icon!"
+        }
+    } catch Error as e {
+        MsgBox "Error running Python script:`n" e.Message "`n`nCommand was:`n" cmd, "Error", "Iconx"
+    }
 
     ; copy just values as TSV row if you still want that
     row := ""
