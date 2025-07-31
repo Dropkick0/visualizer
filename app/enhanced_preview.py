@@ -16,6 +16,7 @@ SAFE_PAD_PX = 40
 # Import trio composite functionality
 from .trio_composite import TrioCompositeGenerator, is_trio_product, trio_template_filename
 from .order_utils import _extract_size_from_item
+from .resource_utils import resource_path
 
 # Import frame overlay functionality
 from .frame_overlay import (
@@ -81,10 +82,10 @@ class EnhancedPortraitPreviewGenerator:
         self.master_images = {}  # Will store master cropped portraits
         
         # Initialize trio composite generator
-        self.trio_generator = TrioCompositeGenerator(Path("Composites"))
-        
+        self.trio_generator = TrioCompositeGenerator(resource_path("Composites"))
+
         # Initialize frame overlay engine
-        self.frame_engine = create_frame_overlay_engine()
+        self.frame_engine = create_frame_overlay_engine(resource_path("Frames"))
         
         logger.info(f"Enhanced preview generator V2 initialized with corrected scaling system")
     
