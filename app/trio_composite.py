@@ -146,9 +146,10 @@ class TrioComposite:
 
 class TrioCompositeGenerator:
     """Main class for generating trio composites with customer images"""
-    
-    def __init__(self, composites_dir: Path):
-        self.composites_dir = composites_dir
+
+    def __init__(self, base_dir: Path | str = "Composites"):
+        """Initialize generator with the directory containing composite files."""
+        self.base_dir = Path(base_dir)
         
         # Available frame and matte combinations (from composite files)
         self.available_combinations = [
@@ -245,11 +246,11 @@ class TrioCompositeGenerator:
         # Create and load composite
         composite = TrioComposite(frame_color, matte_color, size)
         scale = 1.0
-        if not composite.load_composite(self.composites_dir):
+        if not composite.load_composite(self.base_dir):
             if fallback_to_5x10 and size == "10x20":
                 logger.warning("10x20 composite not found, falling back to 5x10")
                 composite = TrioComposite(frame_color, matte_color, "5x10")
-                if not composite.load_composite(self.composites_dir):
+                if not composite.load_composite(self.base_dir):
                     return None
                 size = "5x10"
                 scale = 2.0

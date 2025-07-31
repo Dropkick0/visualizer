@@ -114,7 +114,7 @@ RunDump() {
     ; Pass the TSV path and the selected Dropbox folder to Python.
     ; AutoHotkey's Format() uses {} not %s, so %s produced the literal string
     ; "%s" "%s" "%s" and failed to execute.
-    cmd := Format('"{}" "{}" "{}" "{}"', PythonExe, PyScript, OutputFile, gShootDir)
+    cmd := Format('"{1}" "{2}" "{3}" "{4}"', PythonExe, PyScript, OutputFile, gShootDir)
     
     ; Show what we're about to run (for debugging)
     ; MsgBox "Running command:`n" cmd, "Debug", "Iconi"
