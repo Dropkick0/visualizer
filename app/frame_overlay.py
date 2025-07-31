@@ -470,9 +470,9 @@ class FrameOverlayEngine:
         return frame_size_map.get(product_code)
 
 
-def create_frame_overlay_engine() -> FrameOverlayEngine:
-    """Factory function to create a frame overlay engine"""
-    frames_dir = Path("Frames")
+def create_frame_overlay_engine(frames_dir: Optional[Path] = None) -> FrameOverlayEngine:
+    """Factory function to create a frame overlay engine."""
+    frames_dir = frames_dir or Path("Frames")
     return FrameOverlayEngine(frames_dir)
 
 
