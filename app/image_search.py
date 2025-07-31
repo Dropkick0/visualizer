@@ -6,11 +6,22 @@ Based on 4-digit codes from FileMaker wishlist
 import re
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
+from glob import glob
 from loguru import logger
 from PIL import Image
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 import time
+
+
+def find_all_images(root: Path) -> Dict[str, Path]:
+    """Recursively map image codes to file paths."""
+    patterns = ["**/*.jpg", "**/*.jpeg", "**/*.png"]
+    files: Dict[str, Path] = {}
+    for pat in patterns:
+        for path in root.glob(pat):
+            files[path.stem] = path
+    return files
 
 
 class OptimizedDropboxImageSearcher:

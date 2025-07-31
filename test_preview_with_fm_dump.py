@@ -9,6 +9,8 @@ variable.
 """
 
 import sys
+import os
+import json
 from pathlib import Path
 from typing import List
 
@@ -20,6 +22,11 @@ from app.config import load_product_config, load_config
 from app.image_search import create_image_searcher
 from app.enhanced_preview import EnhancedPortraitPreviewGenerator
 from app.order_from_tsv import rows_to_order_items
+from app.resource_utils import ensure_resource_dirs
+
+CONFIG = json.load(open(Path(__file__).with_name("config.json"), "r"))
+os.environ.setdefault("DROPBOX_ROOT", CONFIG.get("photo_root", ""))
+ensure_resource_dirs()
 
 
 def _expand_extremes(order_items: List[dict]) -> List[dict]:
