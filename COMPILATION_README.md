@@ -34,6 +34,20 @@ Open Command Prompt in the project directory and run:
 "C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe" /in "Visualizer (3).ahk" /out "PortraitVisualizer.exe"
 ```
 
+### PyInstaller Build (Python Only)
+
+To freeze the Python preview script into a single executable run:
+
+```bash
+pyinstaller --onefile \
+            --add-data "Composites;Composites" \
+            --add-data "Frames;Frames" \
+            --add-data "config.json;." \
+            test_preview_with_fm_dump.py
+```
+
+The helper function `resource_path()` will locate these files at run time.
+
 ## What Gets Included
 
 The compiled executable automatically includes:

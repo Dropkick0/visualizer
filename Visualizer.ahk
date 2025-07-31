@@ -54,15 +54,33 @@ global FieldLabels := [
 
 ; ====== AUTO-EXECUTE ======
 
-gShootDir := DirSelect("", 3, "Select Photographer Folder for the Day")
+cfgFile := A_ScriptDir "\config.json"
+try {
+    json := FileRead(cfgFile, "UTF-8")
+    if RegExMatch(json, '"photo_root"\s*:\s*"([^"]+)"', &m)
+        gShootDir := m[1]
+} catch as e {
+    ; ignore errors reading config
+}
 
 if (!gShootDir) {
-    MsgBox "Folder not selected – exiting."
-    ExitApp
+    gShootDir := DirSelect("", 3, "Select Photographer Folder for the Day")
+    if (!gShootDir) {
+        MsgBox "Folder not selected – exiting."
+        ExitApp
+    }
 }
+
 ; Remove trailing backslash to avoid quoting issues when launching Python
 if (SubStr(gShootDir, -1) == "\\")
     gShootDir := SubStr(gShootDir, 1, -1)
+
+; Ensure assets exist for dev workflow
+if !DirExist(A_ScriptDir "\Composites") && DirExist(A_ScriptDir "\assets\Composites")
+    FileCopyDir A_ScriptDir "\assets\Composites", A_ScriptDir "\Composites", 1
+if !DirExist(A_ScriptDir "\Frames") && DirExist(A_ScriptDir "\assets\Frames")
+    FileCopyDir A_ScriptDir "\assets\Frames", A_ScriptDir "\Frames", 1
+
 EnvSet "DROPBOX_ROOT", gShootDir
 return
 

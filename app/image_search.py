@@ -15,11 +15,11 @@ import time
 
 
 def find_all_images(root: Path) -> Dict[str, Path]:
-    """Recursively map image codes to file paths."""
-    patterns = ["**/*.jpg", "**/*.jpeg", "**/*.png"]
+    """Recursively map image codes to file paths using depth-first search."""
+    patterns = ("*.jpg", "*.jpeg", "*.png")
     files: Dict[str, Path] = {}
-    for pat in patterns:
-        for path in root.glob(pat):
+    for ext in patterns:
+        for path in root.rglob(ext):
             files[path.stem] = path
     return files
 
