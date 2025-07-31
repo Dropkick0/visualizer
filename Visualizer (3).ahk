@@ -153,60 +153,36 @@ RunDump() {
     file.Close()
 
 
-    ; Build Python command with live console window
-    ; Direct execution with real-time output display using py launcher
-    pythonCmd := "py"  ; Use the py launcher that we confirmed works
+    ; Build Python command without batch wrappers or extra console window
+    ; Prefer pythonw.exe to suppress any console if available
+    pyw := A_AppData "\Programs\Python\Python311\pythonw.exe"
+    if !FileExist(pyw)
+        pyw := "C:\\Python311\\pythonw.exe"
+    if !FileExist(pyw)
+        pyw := "pythonw.exe"  ; Fallback to PATH
+
     script := "test_preview_with_fm_dump.py"
-    args := Format('"{}" "{}" "{}" --debug', script, OutputFile, gShootDir)
-    
-    ; Use start command to open new console window with live output
-    ; /c = run command and close window when done
-    ; start "" /wait = launch new window & wait for completion
-    ; -u = unbuffered output for real-time display
-    cmdLine := Format('{} /c start "" /wait {} -u {}', A_ComSpec, pythonCmd, args)
-    
-    ; Show status message
-    MsgBox "Starting Python visualizer...`n`n" .
-           "A console window will open showing live progress.`n" .
-           "This may take 1-2 minutes to complete.`n`n" .
-           "The window will close automatically when finished.", 
+    cmdLine := Format('"{}" "{}" "{}" "{}"', pyw, script, OutputFile, gShootDir)
+
+    MsgBox "Starting Python visualizer...`nThe preview will open when ready.",
            "Running Visualizer", "Iconi"
-    
+
     try {
-        ; Run with live console window and capture exit code
-        RunWait cmdLine, WorkingDir, , &ExitCode
-        
-        ; Check exit code first
-        if (ExitCode != 0) {
-            MsgBox "❌ Python script failed with exit code: " ExitCode "`n`n" .
-                   "The console window should have shown the error details.`n`n" .
-                   "Common issues:`n" .
-                   "• Missing Python packages (run setup_and_run.bat)`n" .
-                   "• Invalid Dropbox path`n" .
-                   "• Missing composite/frame files`n`n" .
-                   "Working directory: " WorkingDir, 
-                   "Python Error", "Iconx"
-            return
-        }
-        
-        ; Check if preview was created
-        if (FileExist(PreviewImg)) {
+        ExitCode := RunWait(cmdLine, WorkingDir, "Hide")
+
+        if FileExist(PreviewImg) {
             Run PreviewImg
-            MsgBox "✅ Visualizer completed successfully!`n`n" .
-                   "Preview image opened: " PreviewImg "`n`n" .
-                   "All files saved to: " WorkingDir, 
-                   "Success", "Iconi"
+        } else if (ExitCode != 0) {
+            MsgBox "Python exited with code " ExitCode " and no preview was found.",
+                   "Preview Failed", "Iconx"
         } else {
-            MsgBox "⚠️ Python script completed but no preview image was created.`n`n" .
-                   "Expected: " PreviewImg "`n`n" .
-                   "The console output should have shown why generation failed.`n`n" .
-                   "Working directory: " WorkingDir, "Warning", "Icon!"
+            MsgBox "Script reported success but the preview file is missing.",
+                   "Missing Preview", "Icon!"
         }
     } catch Error as e {
         MsgBox "❌ Error launching Python script:`n" e.Message "`n`n" .
                "Command: " cmdLine "`n`n" .
-               "Working directory: " WorkingDir "`n`n" .
-               "Make sure Python is installed and accessible.", 
+               "Working directory: " WorkingDir,
                "Error", "Iconx"
     }
 
