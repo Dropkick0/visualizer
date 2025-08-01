@@ -148,8 +148,15 @@ RunDump() {
     ; "%s" "%s" "%s" and failed to execute.
     ; Build and run the python command in one step to avoid quoting issues
     ; using numbered placeholders. Format here mirrors a standard %s pattern.
+    ; Prefer pythonw.exe to avoid showing a console window
+    pyw := A_AppData "\Programs\Python\Python311\pythonw.exe"
+    if !FileExist(pyw)
+        pyw := "C:\\Python311\\pythonw.exe"
+    if !FileExist(pyw)
+        pyw := "python.exe"  ; final fallback shows console
+
     try {
-        RunWait Format('"%s" "%s" "%s" "%s"', PythonExe, PyScript, OutputFile, gShootDir),
+        RunWait Format('"%s" "%s" "%s" "%s"', pyw, PyScript, OutputFile, gShootDir),
                A_ScriptDir, "Hide"
         if (FileExist(PreviewImg)) {
             Run PreviewImg
