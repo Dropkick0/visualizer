@@ -14,13 +14,22 @@ from concurrent.futures import ThreadPoolExecutor
 import time
 
 
+_image_cache: Optional[Tuple[Path, Dict[str, Path]]] = None
+
+
 def find_all_images(root: Path) -> Dict[str, Path]:
-    """Recursively map image codes to file paths using depth-first search."""
+    """Recursively map image codes to file paths with a simple cache."""
+    global _image_cache
+    if _image_cache and _image_cache[0] == root:
+        return _image_cache[1]
+
     patterns = ("*.jpg", "*.jpeg", "*.png")
-    files: Dict[str, Path] = {}
-    for ext in patterns:
-        for path in root.rglob(ext):
-            files[path.stem] = path
+    files: Dict[str, Path] = {
+        p.stem: p
+        for ext in patterns
+        for p in root.rglob(ext)
+    }
+    _image_cache = (root, files)
     return files
 
 
