@@ -185,8 +185,9 @@ RunDump() {
     MsgBox "Starting Python visualizer...`nThe preview will open when ready.",
            "Running Visualizer", "Iconi"
 
-    cmd := Format('"{1}" "{2}" "{3}" "{4}"', pyw, script, OutputFile, gShootDir)
     EnvSet "DROPBOX_ROOT", gShootDir
+    cmd := Format('"{1}" "{2}" "{3}" "{4}" > "%5\\python_err.log" 2>&1',
+                  pyw, script, OutputFile, gShootDir, WorkingDir)
     try {
         ExitCode := RunWait(cmd, WorkingDir, "Hide")
 
