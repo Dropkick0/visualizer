@@ -194,6 +194,8 @@ RunDump() {
         pyExe := 'C:\\Python311\\pythonw.exe'
     else if (pyExe = '' && FileExist('C:\\Python311\\python.exe'))
         pyExe := 'C:\\Python311\\python.exe'
+    else if (pyExe = '' && FileExist(A_AppData '\\Programs\\Python\\Python311\\pythonw.exe'))
+        pyExe := A_AppData '\\Programs\\Python\\Python311\\pythonw.exe'
     else if (pyExe = '')                          ; last resort
         pyExe := 'py.exe'                          ; works only if launcher installed
 
@@ -205,7 +207,7 @@ RunDump() {
     cmd := [pyExe, PyScript, OutputFile, gShootDir, "-u"]
     try {
         FileDelete logFile
-        ExitCode := RunWait(cmd, WorkingDir, "Hide", , &out)
+        ExitCode := RunWait(cmd, WorkingDir, "Hide", &out)
         FileAppend out, logFile
         if ExitCode
             FileAppend "`n--- script exited " ExitCode " ---`n", logFile
