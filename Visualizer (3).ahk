@@ -188,7 +188,7 @@ RunDump() {
     EnvSet "DROPBOX_ROOT", gShootDir ; set before the run
     logFile := WorkingDir "\python_err.log"
     cmd := Format(
-        '%ComSpec% /c ""{1}" "{2}" "{3}" "{4}" -u 1> "{5}" 2>&1"',
+        '%ComSpec% /c ""{1}" "{2}" "{3}" "{4}" -u 1^> "{5}" 2^>^&1"',
         pyExe, PyScript, OutputFile, gShootDir, logFile)
     try {
         ExitCode := RunWait(cmd, WorkingDir, "Hide")
