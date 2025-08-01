@@ -24,7 +24,9 @@ from app.enhanced_preview import EnhancedPortraitPreviewGenerator
 from app.order_from_tsv import rows_to_order_items
 from app.resource_utils import ensure_resource_dirs
 
-CONFIG = json.load(open(Path(__file__).with_name("config.json"), "r"))
+# Handle config files saved with a UTF-8 BOM
+with open(Path(__file__).with_name("config.json"), "r", encoding="utf-8-sig") as f:
+    CONFIG = json.load(f)
 os.environ.setdefault("DROPBOX_ROOT", CONFIG.get("photo_root", ""))
 ensure_resource_dirs()
 
