@@ -86,6 +86,20 @@ MsgBox "📁 Photographer folder selected: " gShootDir "`n`n" .
 ; Remove trailing backslash to avoid quoting issues when launching Python
 if (SubStr(gShootDir, -1) == "\\")
     gShootDir := SubStr(gShootDir, 1, -1)
+
+; Persist the selected Dropbox folder for next launch
+try {
+    cfgPath := A_ScriptDir "\config.json"
+    cfgText := FileRead(cfgPath, "UTF-8")
+    if (cfgText != "") {
+        escPath := StrReplace(gShootDir, "\", "\\")
+        cfgText := RegExReplace(cfgText, '("photo_root"\s*:\s*")[^"]*(")', "$1" escPath "$2")
+        FileDelete cfgPath
+        FileAppend cfgText, cfgPath, "UTF-8"
+    }
+} catch as e {
+    ; ignore errors writing config
+}
 EnvSet "DROPBOX_ROOT", gShootDir
 return
 
@@ -162,13 +176,12 @@ RunDump() {
         pyw := "pythonw.exe"  ; Fallback to PATH
 
     script := "test_preview_with_fm_dump.py"
-    cmdLine := Format('"{}" "{}" "{}" "{}"', pyw, script, OutputFile, gShootDir)
-
     MsgBox "Starting Python visualizer...`nThe preview will open when ready.",
            "Running Visualizer", "Iconi"
 
     try {
-        ExitCode := RunWait(cmdLine, WorkingDir, "Hide")
+        ExitCode := RunWait(Format('"%s" "%s" "%s" "%s"', pyw, script, OutputFile, gShootDir),
+                            WorkingDir, "Hide")
 
         if FileExist(PreviewImg) {
             Run PreviewImg
@@ -180,8 +193,9 @@ RunDump() {
                    "Missing Preview", "Icon!"
         }
     } catch Error as e {
+        errCmd := Format('"%s" "%s" "%s" "%s"', pyw, script, OutputFile, gShootDir)
         MsgBox "❌ Error launching Python script:`n" e.Message "`n`n" .
-               "Command: " cmdLine "`n`n" .
+               "Command: " errCmd "`n`n" .
                "Working directory: " WorkingDir,
                "Error", "Iconx"
     }

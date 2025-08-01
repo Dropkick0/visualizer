@@ -75,6 +75,20 @@ if (!gShootDir) {
 if (SubStr(gShootDir, -1) == "\\")
     gShootDir := SubStr(gShootDir, 1, -1)
 
+; Persist chosen Dropbox path into config.json for next launch
+try {
+    cfgPath := A_ScriptDir "\config.json"
+    cfgText := FileRead(cfgPath, "UTF-8")
+    if (cfgText != "") {
+        escPath := StrReplace(gShootDir, "\", "\\")
+        cfgText := RegExReplace(cfgText, '("photo_root"\s*:\s*")[^"]*(")', "$1" escPath "$2")
+        FileDelete cfgPath
+        FileAppend cfgText, cfgPath, "UTF-8"
+    }
+} catch as e {
+    ; ignore errors writing config
+}
+
 ; Ensure assets exist for dev workflow
 if !DirExist(A_ScriptDir "\Composites") && DirExist(A_ScriptDir "\assets\Composites")
     DirCopy A_ScriptDir "\assets\Composites", A_ScriptDir "\Composites", 1
@@ -132,13 +146,11 @@ RunDump() {
     ; Pass the TSV path and the selected Dropbox folder to Python.
     ; AutoHotkey's Format() uses {} not %s, so %s produced the literal string
     ; "%s" "%s" "%s" and failed to execute.
-    cmd := Format('"{1}" "{2}" "{3}" "{4}"', PythonExe, PyScript, OutputFile, gShootDir)
-    
-    ; Show what we're about to run (for debugging)
-    ; MsgBox "Running command:`n" cmd, "Debug", "Iconi"
-    
+    ; Build and run the python command in one step to avoid quoting issues
+    ; using numbered placeholders. Format here mirrors a standard %s pattern.
     try {
-        RunWait cmd, A_ScriptDir, "Hide"
+        RunWait Format('"%s" "%s" "%s" "%s"', PythonExe, PyScript, OutputFile, gShootDir),
+               A_ScriptDir, "Hide"
         if (FileExist(PreviewImg)) {
             Run PreviewImg
             MsgBox "Preview generated successfully!`nOpening: " PreviewImg, "Success", "Iconi"
@@ -146,7 +158,8 @@ RunDump() {
             MsgBox "Preview image not found:`n" PreviewImg "`n`nCheck if Python script ran successfully.", "Warning", "Icon!"
         }
     } catch Error as e {
-        MsgBox "Error running Python script:`n" e.Message "`n`nCommand was:`n" cmd, "Error", "Iconx"
+        errCmd := Format('"%s" "%s" "%s" "%s"', PythonExe, PyScript, OutputFile, gShootDir)
+        MsgBox "Error running Python script:`n" e.Message "`n`nCommand was:`n" errCmd, "Error", "Iconx"
     }
 
     ; copy just values as TSV row if you still want that
