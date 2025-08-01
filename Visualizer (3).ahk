@@ -187,11 +187,11 @@ RunDump() {
 
     EnvSet "DROPBOX_ROOT", gShootDir ; set before the run
     logFile := WorkingDir "\python_err.log"
-    cmd := Format(
-        '%ComSpec% /c ""{1}" "{2}" "{3}" "{4}" -u 1^> "{5}" 2^>^&1"',
-        pyExe, PyScript, OutputFile, gShootDir, logFile)
+    cmd := [pyExe, PyScript, OutputFile, gShootDir, "-u"]
     try {
         ExitCode := RunWait(cmd, WorkingDir, "Hide")
+        if ExitCode
+            FileAppend "`n--- script exited " ExitCode " ---`n", logFile
 
         if FileExist(PreviewImg) {
             Run PreviewImg
@@ -203,8 +203,9 @@ RunDump() {
                    "Missing Preview", "Icon!"
         }
     } catch Error as e {
+        cmdStr := cmd.Join(" ")
         MsgBox "❌ Error launching Python script:`n" e.Message "`n`n" .
-               "Command: " cmd "`n`n" .
+               "Command: " cmdStr "`n`n" .
                "Working directory: " WorkingDir,
                "Error", "Iconx"
     }
