@@ -166,6 +166,12 @@ RunDump() {
     file.Write(buffer)
     file.Close()
 
+    ; Ensure asset folders exist on first launch
+    if !DirExist(A_ScriptDir "\Composites") && DirExist(A_ScriptDir "\assets\Composites")
+        DirCopy A_ScriptDir "\assets\Composites", A_ScriptDir "\Composites", 1
+    if !DirExist(A_ScriptDir "\Frames") && DirExist(A_ScriptDir "\assets\Frames")
+        DirCopy A_ScriptDir "\assets\Frames", A_ScriptDir "\Frames", 1
+
 
     ; Build Python command without batch wrappers or extra console window
     ; Prefer pythonw.exe to suppress any console if available
@@ -180,6 +186,7 @@ RunDump() {
            "Running Visualizer", "Iconi"
 
     cmd := Format('"{1}" "{2}" "{3}" "{4}"', pyw, script, OutputFile, gShootDir)
+    EnvSet "DROPBOX_ROOT", gShootDir
     try {
         ExitCode := RunWait(cmd, WorkingDir, "Hide")
 
