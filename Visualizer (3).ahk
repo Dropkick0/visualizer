@@ -179,7 +179,7 @@ RunDump() {
     MsgBox "Starting Python visualizer...`nThe preview will open when ready.",
            "Running Visualizer", "Iconi"
 
-    cmd := Format('"%s" "%s" "%s" "%s"', pyw, script, OutputFile, gShootDir)
+    cmd := Format('"{1}" "{2}" "{3}" "{4}"', pyw, script, OutputFile, gShootDir)
     try {
         ExitCode := RunWait(cmd, WorkingDir, "Hide")
 
