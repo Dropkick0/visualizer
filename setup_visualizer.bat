@@ -1,35 +1,47 @@
 @echo off
 setlocal
 
-:: Portrait Visualizer one-click setup
+REM ---- Self elevate if needed ----
+>nul 2>&1 "%SystemRoot%\system32\cacls.exe" "%SystemRoot%\system32\config\system"
+if %errorlevel% neq 0 (
+  echo Requesting administrative privileges...
+  powershell Start-Process '%~f0' -Verb runAs
+  exit /b
+)
 
-:: 1. Install Python silently
-curl -L -o python-installer.exe https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
-python-installer.exe /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
-
-:: 2. Install AutoHotkey v2 silently
-curl -L -o ahk-setup.exe https://www.autohotkey.com/download/ahk-v2.exe
-ahk-setup.exe /silent /installto "%ProgramFiles%\AutoHotkey"
-
-:: 3. Copy program files
+REM ---- Variables ----
 set "APPDIR=%ProgramFiles%\PortraitVisualizer"
+set "PY=%ProgramFiles%\Python311\python.exe"
+
+REM 1. Install Python silently if missing
+if not exist "%PY%" (
+  curl -L -o py.exe https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
+  py.exe /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
+)
+
+REM 2. Install AutoHotkey v2 for all users
+if not exist "%ProgramFiles%\AutoHotkey\AutoHotkey64.exe" (
+  curl -L -o ahk.exe https://www.autohotkey.com/download/ahk-v2.exe
+  ahk.exe /silent /allusers
+)
+
+REM 3. Copy program files & assets
+mkdir "%APPDIR%" 2>nul
 xcopy "%~dp0" "%APPDIR%" /E /I /Y >nul
 
-:: 4. Pip packages
-py -m pip install --upgrade pip
-py -m pip install -r "%APPDIR%\requirements.txt"
+REM 4. Install Python dependencies
+"%PY%" -m pip install --upgrade pip
+"%PY%" -m pip install -r "%APPDIR%\requirements.txt"
 
-:: 5. Ensure assets
+REM 5. Ensure assets exist
 xcopy "%~dp0Composites" "%APPDIR%\Composites" /E /I /Y >nul
 xcopy "%~dp0Frames" "%APPDIR%\Frames" /E /I /Y >nul
+if not exist "%APPDIR%\config.json" copy "%~dp0config.json" "%APPDIR%" >nul
 
-:: 6. Write config.json
-> "%APPDIR%\config.json" echo { "photo_root":"C:/Users/%USERNAME%/Re MEMBER Dropbox/PHOTOGRAPHY PROOFING/PHOTOGRAPHER UPLOADS (1)" }
-
-:: 7. Desktop shortcut
+REM 6. Desktop shortcut
 powershell -ExecutionPolicy Bypass -Command ^
-  "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop') + '\\PortraitVisualizer.lnk');" ^
+  "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\\PortraitVisualizer.lnk');" ^
   "$s.TargetPath='%APPDIR%\\Visualizer.ahk';$s.Save()"
 
-echo Done!  Double-click the PortraitVisualizer shortcut to begin.
+echo Installation complete. Launch via desktop shortcut.
 pause
