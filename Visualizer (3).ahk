@@ -175,19 +175,21 @@ RunDump() {
 
     ; Build Python command without batch wrappers or extra console window
     ; Prefer pythonw.exe to suppress any console if available
-    pyw := A_AppData "\Programs\Python\Python311\pythonw.exe"
-    if !FileExist(pyw)
-        pyw := "C:\\Python311\\pythonw.exe"
-    if !FileExist(pyw)
-        pyw := "pythonw.exe"  ; Fallback to PATH
+    if FileExist(A_AppData "\Programs\Python\Python311\pythonw.exe")
+        pyExe := A_AppData "\Programs\Python\Python311\pythonw.exe"
+    else if FileExist('C:\\Python311\\pythonw.exe')
+        pyExe := 'C:\\Python311\\pythonw.exe'
+    else
+        pyExe := 'python.exe'
 
-    script := "test_preview_with_fm_dump.py"
     MsgBox "Starting Python visualizer...`nThe preview will open when ready.",
            "Running Visualizer", "Iconi"
 
-    EnvSet "DROPBOX_ROOT", gShootDir
-    cmd := Format('"{1}" "{2}" "{3}" "{4}" > "%5\\python_err.log" 2>&1',
-                  pyw, script, OutputFile, gShootDir, WorkingDir)
+    EnvSet "DROPBOX_ROOT", gShootDir ; set before the run
+    logFile := WorkingDir "\python_err.log"
+    cmd := Format(
+        '%ComSpec% /c ""{1}" "{2}" "{3}" "{4}" -u 1> "{5}" 2>&1"',
+        pyExe, PyScript, OutputFile, gShootDir, logFile)
     try {
         ExitCode := RunWait(cmd, WorkingDir, "Hide")
 
