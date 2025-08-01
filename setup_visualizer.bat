@@ -41,7 +41,7 @@ if not exist "%APPDIR%\config.json" copy "%~dp0config.json" "%APPDIR%" >nul
 REM 6. Desktop shortcut
 powershell -ExecutionPolicy Bypass -Command ^
   "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\\PortraitVisualizer.lnk');" ^
-  "$s.TargetPath='%APPDIR%\\Visualizer.ahk';$s.Save()"
+  "$s.TargetPath='%APPDIR%\\Visualizer (3).ahk';$s.Save()"
 
 echo Installation complete. Launch via desktop shortcut.
 pause
