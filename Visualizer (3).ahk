@@ -173,22 +173,29 @@ RunDump() {
         DirCopy A_ScriptDir "\assets\Frames", A_ScriptDir "\Frames", 1
 
 
-    ; Build Python command without batch wrappers or extra console window
-    ; 1️⃣ – Registry first (PEP 514)
-    try RegRead exe, 'HKLM\SOFTWARE\Python\PythonCore\3.11\InstallPath', 'ExecutablePath'
-    catch exe := ''
+    ; ---------------------------------------------------------------
+    ;  ➜  robust interpreter lookup
+    ; ---------------------------------------------------------------
+    pyExe := ''                               ; declare so #Warn is happy
 
-    ; 2️⃣ – If registry empty, fall back to known full paths
-    if (exe && FileExist(exe))
-        pyExe := exe
-    else if FileExist('C:\\Python311\\pythonw.exe')
+    ; 1️⃣  Registry (PEP 514)  – always an absolute path
+    try {
+        exe := RegRead('HKLM\\SOFTWARE\\Python\\PythonCore\\3.11\\InstallPath',
+                       'ExecutablePath')
+        if FileExist(exe)
+            pyExe := exe
+    }
+    catch {
+        ; ignore – key probably not present
+    }
+
+    ; 2️⃣  Hard-coded fall-backs
+    if (pyExe = '' && FileExist('C:\\Python311\\pythonw.exe'))
         pyExe := 'C:\\Python311\\pythonw.exe'
-    else if FileExist('C:\\Python311\\python.exe')
+    else if (pyExe = '' && FileExist('C:\\Python311\\python.exe'))
         pyExe := 'C:\\Python311\\python.exe'
-    else if FileExist(A_AppData "\Programs\Python\Python311\pythonw.exe")
-        pyExe := A_AppData "\Programs\Python\Python311\pythonw.exe"
-    else
-        pyExe := 'py.exe'       ; last resort – only works if the launcher is installed
+    else if (pyExe = '')                          ; last resort
+        pyExe := 'py.exe'                          ; works only if launcher installed
 
     MsgBox "Starting Python visualizer...`nThe preview will open when ready.",
            "Running Visualizer", "Iconi"
@@ -198,7 +205,7 @@ RunDump() {
     cmd := [pyExe, PyScript, OutputFile, gShootDir, "-u"]
     try {
         FileDelete logFile
-        ExitCode := RunWait(cmd, WorkingDir, "Hide StdOut StdErr", &out)
+        ExitCode := RunWait(cmd, WorkingDir, "Hide", , &out)
         FileAppend out, logFile
         if ExitCode
             FileAppend "`n--- script exited " ExitCode " ---`n", logFile
