@@ -176,42 +176,45 @@ RunDump() {
     ; ---------------------------------------------------------------
     ;  ➜  robust interpreter lookup
     ; ---------------------------------------------------------------
-    pyExe := ''                               ; keep #Warn happy
+    pyExe := ""               ; (#Warn happiness)
 
-    ; 1️⃣  PEP-514 registry (python.org / winget "full")
+    ; 1️⃣  PEP-514 registry (python.org "regular" install)
     try {
-        tmp := RegRead('HKLM\\SOFTWARE\\Python\\PythonCore\\3.11\\InstallPath',
-                       'ExecutablePath')
+        tmp := RegRead(
+            "HKLM\\SOFTWARE\\Python\\PythonCore\\3.11\\InstallPath",
+            "ExecutablePath")
         if FileExist(tmp)
             pyExe := tmp
     }
-    catch {
-        ; ignore if key not present
-    }
 
-    ; 2️⃣  Well-known install paths
-    if (pyExe = '' && FileExist('C:\\Python311\\pythonw.exe'))
-        pyExe := 'C:\\Python311\\pythonw.exe'
-    else if (pyExe = '' && FileExist('C:\\Python311\\python.exe'))
-        pyExe := 'C:\\Python311\\python.exe'
+    ; 2️⃣  Known absolute paths
+    if (pyExe = "" && FileExist("C:\\Python311\\pythonw.exe"))
+        pyExe := "C:\\Python311\\pythonw.exe"
+    else if (pyExe = "" && FileExist("C:\\Python311\\python.exe"))
+        pyExe := "C:\\Python311\\python.exe"
 
-    ; 3️⃣  Anything on PATH (handles Store installs)
-    if (pyExe = '') {
-        RunWait Format('%ComSpec% /c where python > "%s"', A_Temp '\pywhere.txt')
-        out := FileRead(A_Temp '\pywhere.txt', 'UTF-8')
-        Loop Parse out, '`n', '`r'
+    ; 3️⃣  Anything on PATH  ←—- THIS is the part that was crashing
+    if (pyExe = "") {
+        out := ""
+        ExitCode := RunWait(
+            A_ComSpec " /c where python",
+            ,
+            "Hide",
+            &out)
+        Loop Parse out, "`n", "`r"
             if FileExist(A_LoopField) {
                 pyExe := A_LoopField
                 break
             }
-        FileDelete A_Temp '\pywhere.txt'
     }
 
-    ; 4️⃣  Give up cleanly if none found
-    if (pyExe = '') {
-        MsgBox 'No usable Python interpreter was found.' . '`n`n' .
-               '• Install Python from python.org *with "Add to PATH" checked*,' . '`n' .
-               '• or point this script at a portable Python directory.', 'Python Missing', 'Iconx'
+    ; 4️⃣  Clean abort if we still have nothing
+    if (pyExe = "") {
+        MsgBox(
+            "No usable Python interpreter was found.`n`n" .
+            "• Install Python from python.org (check \"Add to PATH\"), or`n" .
+            "• Point this script at a portable Python directory.",
+            "Python Missing", "Iconx")
         Return
     }
 
