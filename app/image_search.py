@@ -6,6 +6,7 @@ Based on 4-digit codes from FileMaker wishlist
 import re
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
+from functools import lru_cache
 from glob import glob
 from loguru import logger
 from PIL import Image
@@ -14,23 +15,16 @@ from concurrent.futures import ThreadPoolExecutor
 import time
 
 
-_image_cache: Optional[Tuple[Path, Dict[str, Path]]] = None
 
-
+@lru_cache(maxsize=1)
 def find_all_images(root: Path) -> Dict[str, Path]:
-    """Recursively map image codes to file paths with a simple cache."""
-    global _image_cache
-    if _image_cache and _image_cache[0] == root:
-        return _image_cache[1]
-
+    """Recursively map image codes to file paths with caching."""
     patterns = ("*.jpg", "*.jpeg", "*.png")
-    files: Dict[str, Path] = {
+    return {
         p.stem: p
         for ext in patterns
         for p in root.rglob(ext)
     }
-    _image_cache = (root, files)
-    return files
 
 
 class OptimizedDropboxImageSearcher:
