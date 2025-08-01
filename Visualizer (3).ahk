@@ -197,19 +197,21 @@ RunDump() {
 
     ; 3️⃣  Anything on PATH (handles Store installs)
     if (pyExe = '') {
-        RunWait ['%ComSpec%', '/c', 'where', 'python'], , 'Hide', &out
+        RunWait Format('%ComSpec% /c where python > "%s"', A_Temp '\pywhere.txt')
+        out := FileRead(A_Temp '\pywhere.txt', 'UTF-8')
         Loop Parse out, '`n', '`r'
             if FileExist(A_LoopField) {
                 pyExe := A_LoopField
                 break
             }
+        FileDelete A_Temp '\pywhere.txt'
     }
 
     ; 4️⃣  Give up cleanly if none found
     if (pyExe = '') {
-        MsgBox 'No Python 3.11+ installation found.`n`n' .
-               'Install from https://python.org (check "Add to PATH") or add it to PATH, then rerun the Visualizer.',
-               'Python Missing', 'Iconx'
+        MsgBox 'No usable Python interpreter was found.' . '`n`n' .
+               '• Install Python from python.org *with "Add to PATH" checked*,' . '`n' .
+               '• or point this script at a portable Python directory.', 'Python Missing', 'Iconx'
         Return
     }
 
