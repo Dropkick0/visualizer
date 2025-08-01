@@ -174,13 +174,18 @@ RunDump() {
 
 
     ; Build Python command without batch wrappers or extra console window
-    ; Prefer pythonw.exe to suppress any console if available
-    if FileExist(A_AppData "\Programs\Python\Python311\pythonw.exe")
+    ; Prefer an absolute interpreter path from the registry if available
+    try RegRead exe, 'HKLM\SOFTWARE\Python\PythonCore\3.11\InstallPath', 'ExecutablePath'
+    catch
+        exe := ''
+    if (exe && FileExist(exe))
+        pyExe := exe
+    else if FileExist(A_AppData "\Programs\Python\Python311\pythonw.exe")
         pyExe := A_AppData "\Programs\Python\Python311\pythonw.exe"
     else if FileExist('C:\\Python311\\pythonw.exe')
         pyExe := 'C:\\Python311\\pythonw.exe'
     else
-        pyExe := 'python.exe'
+        pyExe := 'py.exe'
 
     MsgBox "Starting Python visualizer...`nThe preview will open when ready.",
            "Running Visualizer", "Iconi"
