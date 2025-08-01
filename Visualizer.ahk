@@ -7,7 +7,6 @@ global InterKeyDelay := 100
 global OutputFile := A_ScriptDir "\fm_dump.tsv"
 global PreviewImg := A_ScriptDir "\app\static\previews\fm_dump_preview.png"
 global PyScript := A_ScriptDir "\test_preview_with_fm_dump.py"
-global PythonExe := "python"
 global gShootDir := ""
 
 ; FM window match
@@ -155,9 +154,9 @@ RunDump() {
     if !FileExist(pyw)
         pyw := "python.exe"  ; final fallback shows console
 
+    cmd := Format('"%s" "%s" "%s" "%s"', pyw, PyScript, OutputFile, gShootDir)
     try {
-        RunWait Format('"%s" "%s" "%s" "%s"', pyw, PyScript, OutputFile, gShootDir),
-               A_ScriptDir, "Hide"
+        RunWait cmd, A_ScriptDir, "Hide"
         if (FileExist(PreviewImg)) {
             Run PreviewImg
             MsgBox "Preview generated successfully!`nOpening: " PreviewImg, "Success", "Iconi"
@@ -165,8 +164,7 @@ RunDump() {
             MsgBox "Preview image not found:`n" PreviewImg "`n`nCheck if Python script ran successfully.", "Warning", "Icon!"
         }
     } catch Error as e {
-        errCmd := Format('"%s" "%s" "%s" "%s"', PythonExe, PyScript, OutputFile, gShootDir)
-        MsgBox "Error running Python script:`n" e.Message "`n`nCommand was:`n" errCmd, "Error", "Iconx"
+        MsgBox "Error running Python script:`n" e.Message "`n`nCommand was:`n" cmd, "Error", "Iconx"
     }
 
     ; copy just values as TSV row if you still want that

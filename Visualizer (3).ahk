@@ -179,9 +179,9 @@ RunDump() {
     MsgBox "Starting Python visualizer...`nThe preview will open when ready.",
            "Running Visualizer", "Iconi"
 
+    cmd := Format('"%s" "%s" "%s" "%s"', pyw, script, OutputFile, gShootDir)
     try {
-        ExitCode := RunWait(Format('"%s" "%s" "%s" "%s"', pyw, script, OutputFile, gShootDir),
-                            WorkingDir, "Hide")
+        ExitCode := RunWait(cmd, WorkingDir, "Hide")
 
         if FileExist(PreviewImg) {
             Run PreviewImg
@@ -193,9 +193,8 @@ RunDump() {
                    "Missing Preview", "Icon!"
         }
     } catch Error as e {
-        errCmd := Format('"%s" "%s" "%s" "%s"', pyw, script, OutputFile, gShootDir)
         MsgBox "❌ Error launching Python script:`n" e.Message "`n`n" .
-               "Command: " errCmd "`n`n" .
+               "Command: " cmd "`n`n" .
                "Working directory: " WorkingDir,
                "Error", "Iconx"
     }
