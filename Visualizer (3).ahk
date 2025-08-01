@@ -189,7 +189,9 @@ RunDump() {
     logFile := WorkingDir "\python_err.log"
     cmd := [pyExe, PyScript, OutputFile, gShootDir, "-u"]
     try {
-        ExitCode := RunWait(cmd, WorkingDir, "Hide")
+        FileDelete logFile
+        ExitCode := RunWait(cmd, WorkingDir, "Hide StdOut StdErr", &out)
+        FileAppend out, logFile
         if ExitCode
             FileAppend "`n--- script exited " ExitCode " ---`n", logFile
 
@@ -203,7 +205,9 @@ RunDump() {
                    "Missing Preview", "Icon!"
         }
     } catch Error as e {
-        cmdStr := cmd.Join(" ")
+        cmdStr := ""
+        for idx, term in cmd
+            cmdStr .= (idx=1 ? "" : " ") term
         MsgBox "❌ Error launching Python script:`n" e.Message "`n`n" .
                "Command: " cmdStr "`n`n" .
                "Working directory: " WorkingDir,
