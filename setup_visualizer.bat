@@ -22,7 +22,7 @@ if not exist "%PY%" (
 REM 2. Install AutoHotkey v2 for all users
 if not exist "%ProgramFiles%\AutoHotkey\AutoHotkey64.exe" (
   curl -L -o ahk.exe https://www.autohotkey.com/download/ahk-v2.exe
-  ahk.exe /silent /Elevate /installto "%ProgramFiles%\AutoHotkey"
+  ahk.exe /silent /allusers
 )
 
 REM 3. Copy program files & assets

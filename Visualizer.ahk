@@ -77,9 +77,9 @@ if (SubStr(gShootDir, -1) == "\\")
 
 ; Ensure assets exist for dev workflow
 if !DirExist(A_ScriptDir "\Composites") && DirExist(A_ScriptDir "\assets\Composites")
-    DirCopy A_ScriptDir "\assets\Composites", A_ScriptDir "\Composites", 1
+    FileCopyDir A_ScriptDir "\assets\Composites", A_ScriptDir "\Composites", 1
 if !DirExist(A_ScriptDir "\Frames") && DirExist(A_ScriptDir "\assets\Frames")
-    DirCopy A_ScriptDir "\assets\Frames", A_ScriptDir "\Frames", 1
+    FileCopyDir A_ScriptDir "\assets\Frames", A_ScriptDir "\Frames", 1
 
 EnvSet "DROPBOX_ROOT", gShootDir
 return
