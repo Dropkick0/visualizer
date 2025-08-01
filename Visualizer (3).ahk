@@ -172,49 +172,20 @@ RunDump() {
     if !DirExist(A_ScriptDir "\Frames") && DirExist(A_ScriptDir "\assets\Frames")
         DirCopy A_ScriptDir "\assets\Frames", A_ScriptDir "\Frames", 1
 
+    if !CheckAssets()
+        return
+
 
     ; ---------------------------------------------------------------
     ;  ➜  robust interpreter lookup
     ; ---------------------------------------------------------------
-    pyExe := ""               ; (#Warn happiness)
-
-    ; 1️⃣  PEP-514 registry (python.org "regular" install)
-    try {
-        tmp := RegRead(
-            "HKLM\\SOFTWARE\\Python\\PythonCore\\3.11\\InstallPath",
-            "ExecutablePath")
-        if FileExist(tmp)
-            pyExe := tmp
-    }
-
-    ; 2️⃣  Known absolute paths
-    if (pyExe = "" && FileExist("C:\\Python311\\pythonw.exe"))
-        pyExe := "C:\\Python311\\pythonw.exe"
-    else if (pyExe = "" && FileExist("C:\\Python311\\python.exe"))
-        pyExe := "C:\\Python311\\python.exe"
-
-    ; 3️⃣  Anything on PATH  ←—- THIS is the part that was crashing
-    if (pyExe = "") {
-        out := ""
-        ExitCode := RunWait(
-            A_ComSpec " /c where python",
-            ,
-            "Hide",
-            &out)
-        Loop Parse out, "`n", "`r"
-            if FileExist(A_LoopField) {
-                pyExe := A_LoopField
-                break
-            }
-    }
-
-    ; 4️⃣  Clean abort if we still have nothing
+    pyExe := FindPython()
     if (pyExe = "") {
         MsgBox(
-            "No usable Python interpreter was found.`n`n" .
-            "• Install Python from python.org (check \"Add to PATH\"), or`n" .
-            "• Point this script at a portable Python directory.",
-            "Python Missing", "Iconx")
+            'No usable Python interpreter was found.`n`n'
+          . '• Install Python from python.org (check "Add to PATH"), or`n'
+          . '• Point this script at a portable Python directory.',
+            'Python Missing', 'Iconx')
         Return
     }
 
@@ -223,13 +194,11 @@ RunDump() {
 
     EnvSet "DROPBOX_ROOT", gShootDir ; set before the run
     logFile := WorkingDir "\python_err.log"
-    cmd := [pyExe, PyScript, OutputFile, gShootDir, "-u"]
+    FileDelete logFile
+    cmdLine := Format('{} "{}" "{}" "{}" "{}" -u > "{}" 2>&1',
+                      A_ComSpec ' /c', pyExe, PyScript, OutputFile, gShootDir, logFile)
     try {
-        FileDelete logFile
-        ExitCode := RunWait(cmd, WorkingDir, "Hide", &out)
-        FileAppend out, logFile
-        if ExitCode
-            FileAppend "`n--- script exited " ExitCode " ---`n", logFile
+        ExitCode := RunWait(cmdLine, WorkingDir, "Hide")
 
         if FileExist(PreviewImg) {
             Run PreviewImg
@@ -241,11 +210,8 @@ RunDump() {
                    "Missing Preview", "Icon!"
         }
     } catch Error as e {
-        cmdStr := ""
-        for idx, term in cmd
-            cmdStr .= (idx=1 ? "" : " ") term
         MsgBox "❌ Error launching Python script:`n" e.Message "`n`n" .
-               "Command: " cmdStr "`n`n" .
+               "Command: " cmdLine "`n`n" .
                "Working directory: " WorkingDir,
                "Error", "Iconx"
     }
@@ -356,6 +322,41 @@ ActivateFMWindow(){
     }
     
     return False
+}
+
+CheckAssets(){
+    for dir in ['Composites', 'Frames'] {
+        if !DirExist(dir) || !FileExist(dir '\\*.jpg') {
+            MsgBox 'Missing asset folder: ' dir, 'Fatal', 'Iconx'
+            return False
+        }
+    }
+    return True
+}
+
+FindPython(){
+    try tmp := RegRead(
+        'HKLM\\SOFTWARE\\Python\\PythonCore\\3.11\\InstallPath',
+        'ExecutablePath')
+    catch
+        tmp := ''
+    if FileExist(tmp)
+        return '"' tmp '"'
+
+    for path in [
+        'C:\\Python311\\pythonw.exe'
+      , 'C:\\Python311\\python.exe'
+      , A_AppData '\\Programs\\Python\\Python311\\pythonw.exe' ] {
+        if FileExist(path)
+            return '"' path '"'
+    }
+
+    RunWait A_ComSpec ' /c where python > "%A_Temp%\\pywhere.txt"', , 'Hide'
+    out := FileRead(A_Temp '\\pywhere.txt', 'UTF-8')
+    Loop Parse out, '`n', '`r'
+        if FileExist(A_LoopField)
+            return '"' A_LoopField '"'
+    return ''
 }
 
 
