@@ -176,28 +176,42 @@ RunDump() {
     ; ---------------------------------------------------------------
     ;  ➜  robust interpreter lookup
     ; ---------------------------------------------------------------
-    pyExe := ''                               ; declare so #Warn is happy
+    pyExe := ''                               ; keep #Warn happy
 
-    ; 1️⃣  Registry (PEP 514)  – always an absolute path
+    ; 1️⃣  PEP-514 registry (python.org / winget "full")
     try {
-        exe := RegRead('HKLM\\SOFTWARE\\Python\\PythonCore\\3.11\\InstallPath',
+        tmp := RegRead('HKLM\\SOFTWARE\\Python\\PythonCore\\3.11\\InstallPath',
                        'ExecutablePath')
-        if FileExist(exe)
-            pyExe := exe
+        if FileExist(tmp)
+            pyExe := tmp
     }
     catch {
-        ; ignore – key probably not present
+        ; ignore if key not present
     }
 
-    ; 2️⃣  Hard-coded fall-backs
+    ; 2️⃣  Well-known install paths
     if (pyExe = '' && FileExist('C:\\Python311\\pythonw.exe'))
         pyExe := 'C:\\Python311\\pythonw.exe'
     else if (pyExe = '' && FileExist('C:\\Python311\\python.exe'))
         pyExe := 'C:\\Python311\\python.exe'
-    else if (pyExe = '' && FileExist(A_AppData '\\Programs\\Python\\Python311\\pythonw.exe'))
-        pyExe := A_AppData '\\Programs\\Python\\Python311\\pythonw.exe'
-    else if (pyExe = '')                          ; last resort
-        pyExe := 'py.exe'                          ; works only if launcher installed
+
+    ; 3️⃣  Anything on PATH (handles Store installs)
+    if (pyExe = '') {
+        RunWait ['%ComSpec%', '/c', 'where', 'python'], , 'Hide', &out
+        Loop Parse out, '`n', '`r'
+            if FileExist(A_LoopField) {
+                pyExe := A_LoopField
+                break
+            }
+    }
+
+    ; 4️⃣  Give up cleanly if none found
+    if (pyExe = '') {
+        MsgBox 'No Python 3.11+ installation found.`n`n' .
+               'Install from https://python.org (check "Add to PATH") or add it to PATH, then rerun the Visualizer.',
+               'Python Missing', 'Iconx'
+        Return
+    }
 
     MsgBox "Starting Python visualizer...`nThe preview will open when ready.",
            "Running Visualizer", "Iconi"
